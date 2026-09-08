@@ -6,11 +6,11 @@ number it claims. They run on the 8-catchment CAMELS sample in `data/`
 
 | file | shows | runtime (CPU) |
 |---|---|---|
-| `01_run_the_model.py` | shapes, the forward call | instant |
-| `02_camels_released_parameters.py` | load a released set, reproduce its published skill | ~15 s |
+| `01_run_the_model.py` | shapes, the forward call | 4 s |
+| `02_camels_released_parameters.py` | load a released set, reproduce its published skill | 8 s |
 | `03_calibrate.py` | gradient-descent calibration of 8 catchments at once | ~2 min |
 | `04_invert_the_forcing.py` | freeze the model, solve for precipitation | ~3 min |
-| `05_gradient_health.py` | find parameters that receive no gradient | ~10 s |
+| `05_gradient_health.py` | find parameters that receive no gradient | 17 s |
 
 `_data.py` is the shared loader. It also holds the benchmark windows and the
 `run_window` / `scoring_mask` helpers that implement the spin-up-then-mask rule:

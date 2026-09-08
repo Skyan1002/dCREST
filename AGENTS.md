@@ -29,9 +29,17 @@ catchments, calibrated and scored under the community benchmark protocol, in
 
 ```bash
 pip install -e ".[test]"
-python examples/01_run_the_model.py                 # synthetic, instant
-python examples/02_camels_released_parameters.py    # real catchments, ~15 s
-pytest -q                                           # 50+ tests, ~90 s
+python scripts/selfcheck.py     # 8 checks, ~20 s, non-zero exit if anything is broken
+```
+
+That is the fastest way to know the checkout works. It runs the model, checks
+that gradients reach the forcing and every parameter, loads all four released
+parameter sets, and reproduces the published test NSE from the bundled sample.
+Then:
+
+```bash
+python examples/02_camels_released_parameters.py    # real catchments, 8 s
+pytest -q                                           # 52 tests, ~2 min
 ```
 
 `examples/` is ordered; each file is standalone, prints what it did, and asserts
@@ -40,11 +48,11 @@ have what you need.
 
 | example | shows | runtime |
 |---|---|---|
-| `01_run_the_model.py` | shapes, the forward call | instant |
-| `02_camels_released_parameters.py` | load a released set, reproduce its published skill | ~15 s |
-| `03_calibrate.py` | gradient-descent calibration of 8 catchments at once | ~60 s |
-| `04_invert_the_forcing.py` | freeze the model, solve for precipitation | ~60 s |
-| `05_gradient_health.py` | find parameters that receive no gradient | ~5 s |
+| `01_run_the_model.py` | shapes, the forward call | 4 s |
+| `02_camels_released_parameters.py` | load a released set, reproduce its published skill | 8 s |
+| `03_calibrate.py` | gradient-descent calibration of 8 catchments at once | ~2 min |
+| `04_invert_the_forcing.py` | freeze the model, solve for precipitation | ~3 min |
+| `05_gradient_health.py` | find parameters that receive no gradient | 17 s |
 
 ## The five rules
 
