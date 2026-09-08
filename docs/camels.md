@@ -38,9 +38,14 @@ needed a model frozen over 2003–2014, so its calibration period *contains* the
 benchmark test window. Scoring it there measures nothing. It is released because
 the inversion results depend on it, not as a competitive product.
 
-Each set ships as `.npz` with provenance (bounds, UH clamp, protocol, member
-list, per-catchment metrics) and `.csv` with one row per gauge. `members/` holds
-the individual seeds, so the ensemble rows can be rebuilt.
+The three benchmark sets ship as `.npz` with full provenance (bounds, UH clamp,
+protocol, member list, per-catchment metrics) and `.csv` with one row per gauge.
+**v2A carries only `ids`, `bounds` and `uh_kmin_h`** — it predates the provenance
+format, so it has no stored metrics and `config_from_meta` supplies the default
+`dt_hours` and `uh_nstep` for it. A loop over all four sets that reads
+`meta["metric_test_nse"]` will raise `KeyError` on v2A. `members/` holds the individual seeds behind the
+ensemble rows: six each for `daymet665` and `maurer528`, four for the
+`tension665` variant, whose ensemble row is therefore a four-member mean.
 
 ## Placement
 
@@ -50,7 +55,7 @@ Matched forcing, same metric code, medians across catchments.
 |---|---|
 | LSTM ensemble (Kratzert et al. 2019) | 0.74 |
 | HBV upper benchmark (calibrated ensemble, Seibert et al. 2018) | 0.68 |
-| dCREST 6-member ensemble mean | 0.67–0.68 |
+| dCREST ensemble mean (6 seeds) | 0.672 (Maurer), 0.684 (Daymet) |
 | SAC-SMA + Snow-17 (Newman et al. 2015 simulations) | 0.664 |
 | **dCREST best-of-6 (this release)** | **0.659–0.662** |
 | mHM | 0.66 |
@@ -65,7 +70,7 @@ code on the same 528 catchments and the same forcing (Maurer):
 | median KGE | 0.728 | 0.719 |
 | r | 0.825 | 0.827 |
 | α (variability ratio) | 0.844 | 0.823 |
-| β (volume bias) | 0.955 | 0.937 |
+| β (volume bias) | 0.953 | 0.937 |
 | log-NSE (low flows) | 0.684 | 0.607 |
 | FHV (%) | −27.4 | −28.0 |
 | FLV (%) | +43.6 | +73.0 |

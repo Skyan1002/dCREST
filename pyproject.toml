@@ -26,6 +26,7 @@ io = ["pandas>=1.5"]
 
 [project.urls]
 Source = "https://github.com/HyDROSLab/dcrest"
+# Update both this and README/CITATION.cff if the repository moves.
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -63,6 +63,12 @@ print(f"\nworst current value: {current[worst_name]:.2f} ({worst_name})")
 assert current[worst_name] <= 0.5, "a parameter is inert under the current configuration"
 print("OK — every parameter receives gradient under the current defaults.")
 print("""
+Note on `fc`. The README reports it inert in 100% of catchments; here it usually
+looks alive. Both are true: `fc` went dead at the *calibrated* values over 665
+catchments, where the interflow cap never bound, and a fresh default-initialised
+8-catchment run need not reach that regime. `kmult` is different — the UH clamp
+kills its gradient whatever the values are, which is why it reproduces here.""")
+print("""
 Run this after any change to bounds, structure or the UH clamp, and on your own
 calibrated set rather than on defaults: whether a bound binds depends on where
 the parameters actually sit.""")

@@ -1,9 +1,22 @@
 #!/usr/bin/env python3
 """Print the correctness evidence table quoted in the README.
 
-Run from anywhere:  python scripts/verify.py
-Set DCREST_STUDY_ROOT if the reference implementation lives elsewhere.
+    python scripts/verify.py
+    python scripts/verify.py --quick               # skip the GPU timing rows
+    python scripts/verify.py --require-reference   # fail if rows must be skipped
+
+Three rows compare against an independent reference implementation that is NOT
+part of this repository (`crest_blackbox.py` and the CAMELS arrays from the
+study the model was built for). Without it those rows print SKIPPED and the rest
+still run; point DCREST_STUDY_ROOT at a checkout that has them to enable them.
+
+The reference comparisons are tolerances, not guarantees of bit-exactness: they
+were exactly zero under an earlier PyTorch and are round-off (~1e-14 in float64,
+~2e-5 in float32 after 3000 recursive steps) under others, because reduction
+order and kernel fusion differ between builds. The rows that should be exactly
+zero are the internal equivalences — router and checkpointing.
 """
+import argparse
 import os
 import sys
 import time
@@ -35,10 +48,24 @@ def _camels(n_basins=32, n_days=3000):
     return common, cf, cp, T, f, z, keys
 
 
+REFERENCE_ROWS = ("discharge vs reference implementation (float64)",
+                  "discharge vs reference implementation (float32)",
+                  "dQ/dP vs reference implementation (float64)")
+
+
 def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--require-reference", action="store_true",
+                    help="exit non-zero if the external reference is missing")
+    ap.add_argument("--quick", action="store_true",
+                    help="skip the GPU timing rows (they dominate the runtime)")
+    args = ap.parse_args()
+
     sys.path.insert(0, ROOT)
     torch.manual_seed(0)
-    have_ref = os.path.exists(f"{ROOT}/crest_blackbox.py")
+    have_ref = (os.path.exists(f"{ROOT}/crest_blackbox.py")
+                and os.path.exists(f"{ROOT}/data/forcing_daily.npz")
+                and os.path.exists(f"{ROOT}/data/params_v2A.npz"))
 
     if have_ref:
         common, cf, cp, T, f, z, keys = _camels()
@@ -140,7 +167,7 @@ def main():
     add("gradient with vs without checkpointing",
         f"{(Pc.grad - Pd.grad).abs().max().item():.2e}")
 
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and not args.quick:
         N, Tg = 512, 4000
         Pg = torch.rand(Tg, N, device="cuda") * 8
         TAg = torch.full((Tg, N), 11.0, device="cuda")
@@ -170,14 +197,28 @@ def main():
                 f"{torch.cuda.max_memory_allocated() / 2**30:.2f} GiB "
                 f"({torch.cuda.get_device_name(0)})")
 
+    if not have_ref:
+        for name in REFERENCE_ROWS:
+            add(name, "SKIPPED", f"reference not found under DCREST_STUDY_ROOT={ROOT}")
+
     w1 = max(len(r[0]) for r in rows)
     w2 = max(len(r[1]) for r in rows)
-    print(f"dcrest {dcrest.__version__} — verification\n")
+    dev = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu only"
+    print(f"dcrest {dcrest.__version__} — verification")
+    print(f"torch {torch.__version__}, {dev}\n")
     print(f"{'check'.ljust(w1)}  {'result'.ljust(w2)}  note")
     print("-" * (w1 + w2 + 40))
     for c, v, note in rows:
         print(f"{c.ljust(w1)}  {v.ljust(w2)}  {note}")
 
+    if not have_ref:
+        print(f"\n{len(REFERENCE_ROWS)} rows SKIPPED: the external reference "
+              f"implementation was not found.\nSet DCREST_STUDY_ROOT to a "
+              f"checkout containing crest_blackbox.py to run them.")
+        if args.require_reference:
+            return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

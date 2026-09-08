@@ -13,9 +13,10 @@ held fixed while the input is solved for — which is what makes it usable as a
 decoder in forcing-inversion and data-assimilation problems.
 
 ```bash
-pip install dcrest                # released version
 pip install -e ".[test]"          # from a checkout, with pytest
 ```
+
+(Not yet on PyPI; install from a checkout.)
 
 Python ≥ 3.9, PyTorch ≥ 2.0. No compiled extensions, no Fortran, no
 model-specific file formats.
@@ -43,10 +44,16 @@ whole batch runs in parallel on one GPU.
 ### Real catchments, released parameters
 
 ```python
-params, meta = dcrest.load_parameters("camels/dCREST_CAMELS_v1.0_daymet665.npz")
+# subset= selects and orders the catchments to match your forcing columns
+params, meta = dcrest.load_parameters("camels/dCREST_CAMELS_v1.0_daymet665.npz",
+                                      subset=["01031500", "02361000"])
 cfg = dcrest.config_from_meta(meta)     # carries the UH clamp and the bounds
-Q = dcrest.simulate(P, T, E, params, cfg)
+Q = dcrest.simulate(P, T, E, params, cfg)      # P, T, E are (T, 2) here
 ```
+
+Parameter columns must line up with forcing columns: the file holds 665
+catchments, so pass `subset=` unless your forcing has all 665 in the file's own
+order. Paths above are relative to the repository root.
 
 Always build the config from the file's metadata. A set is only valid under the
 unit-hydrograph clamp and parameter ranges it was fitted under, so
@@ -94,7 +101,7 @@ python examples/04_invert_the_forcing.py            # solve for precipitation
 python examples/05_gradient_health.py               # find inert parameters
 ```
 
-They run on an 8-catchment CAMELS sample shipped in `examples/data/` (1.2 MB),
+They run on an 8-catchment CAMELS sample shipped in `examples/data/` (1.1 MB),
 so nothing needs downloading. `scripts/fetch_camels.py` obtains the full
 665-catchment forcing.
 
@@ -119,7 +126,7 @@ benchmark, so the numbers are directly comparable.
 |---|---|
 | LSTM ensemble (Kratzert et al. 2019) | 0.74 |
 | HBV upper benchmark (calibrated ensemble, Seibert et al. 2018) | 0.68 |
-| dCREST 6-member ensemble mean | 0.67–0.68 |
+| dCREST ensemble mean (6 seeds) | 0.672 (Maurer), 0.684 (Daymet) |
 | SAC-SMA + Snow-17 (Newman et al. 2015) | 0.664 |
 | **dCREST best-of-6 (this release)** | **0.659–0.662** |
 | mHM | 0.66 |
@@ -127,8 +134,8 @@ benchmark, so the numbers are directly comparable.
 
 Paired against SAC-SMA on the same 528 catchments and the same forcing: median
 ΔNSE −0.005, dCREST better in 47% of catchments, Wilcoxon p = 0.009. Slightly
-but genuinely below SAC-SMA, at mHM level, with better volume bias (β 0.955 vs
-0.936) and better low-flow log-NSE (+0.044). See [`docs/camels.md`](docs/camels.md).
+but genuinely below SAC-SMA, at mHM level, with better volume bias (β 0.953 vs
+0.937) and better low-flow log-NSE (+0.077). See [`docs/camels.md`](docs/camels.md).
 
 **v2A uses a different protocol** and must not be scored on the benchmark test
 window, which its calibration period contains.
@@ -173,15 +180,26 @@ API contracts.
 
 | check | result | note |
 |---|---|---|
-| discharge vs reference implementation (float64) | **0.00e+00** mm/day | 32 CAMELS catchments × 3000 days |
-| discharge vs reference implementation (float32) | **0.00e+00** mm/day | 32 CAMELS catchments × 3000 days |
-| dQ/dP vs reference implementation | **0.00e+00** | peak gradient 1.4e+02 |
-| autodiff vs central finite differences | 6.99e-08 | worst of all 16 parameters |
+| grouped-convolution router vs reference loop | **0.00e+00** | exact by construction |
+| gradient with vs without checkpointing | **0.00e+00** | exact by construction |
 | water balance closure | 4.63e-16 | relative residual |
 | unit-hydrograph mass conservation | 2.22e-16 | Σ weights − 1 |
-| grouped-convolution router vs reference loop | 0.00e+00 | |
-| gradient with vs without checkpointing | 0.00e+00 | |
+| discharge vs reference implementation (float64) | 2.71e-14 mm/day | 32 CAMELS catchments × 3000 days |
+| dQ/dP vs reference implementation (float64) | 1.60e-14 | relative to peak gradient 1.4e+02 |
+| autodiff vs central finite differences | 6.99e-08 | worst of all 16 parameters |
 | CPU vs CUDA (float32) | 1.65e-05 | relative |
+| discharge vs reference implementation (float32) | 1.91e-05 mm/day | 32 CAMELS catchments × 3000 days |
+
+Measured with PyTorch 2.13 on an RTX 4500 Ada. **Only the first two rows are
+exact by construction**; the rest are tolerances. The reference comparisons were
+exactly zero under an earlier PyTorch and are float round-off under this one,
+because reduction order and kernel fusion differ between builds — 3000 recursive
+steps accumulate that. Treat a change of order-of-magnitude as a regression, not
+a change in the last digits.
+
+The three "vs reference implementation" rows need an independent implementation
+that is **not part of this repository**. Without it they print `SKIPPED` and the
+other rows still run; `--require-reference` makes their absence an error.
 
 **Provenance.** The NumPy sibling of this water-balance kernel was verified
 element-wise against the verbatim EF5 C++ (`CRESTModel.cpp`, `Snow17Model.cpp`)
@@ -255,7 +273,12 @@ The package defaults to the corrected settings; `CrestConfig.legacy()` and
 src/dcrest/       the package
 camels/           released parameter sets, calibration seeds, benchmark results
 examples/         numbered, runnable, self-checking; 8-catchment sample included
-scripts/          verify.py, the CAMELS calibration driver, data fetch
+scripts/
+  selfcheck.py         eight checks in ~20 s; the fastest "does this work?"
+  verify.py            numerical identity against a reference implementation
+  gen_parameter_table.py  regenerates docs/parameters.md from the code
+  calibrate_camels.py / select_camels.py   the CAMELS calibration pipeline
+  fetch_camels.py      the full 665-catchment forcing (not in git)
 tests/            physics, gradients, execution, regression
 docs/             model.md, parameters.md, camels.md
 AGENTS.md         orientation for coding agents

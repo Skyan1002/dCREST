@@ -27,6 +27,6 @@ jobs:
       - name: Tests
         run: pytest -q
       - name: Numerical verification
-        run: python scripts/verify.py
+        run: python scripts/verify.py --quick
       - name: Docs match the code
         run: python scripts/gen_parameter_table.py --check

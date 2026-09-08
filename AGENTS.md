@@ -39,7 +39,7 @@ Then:
 
 ```bash
 python examples/02_camels_released_parameters.py    # real catchments, 8 s
-pytest -q                                           # 52 tests, ~2 min
+pytest -q                                           # 53 tests, ~2 min
 ```
 
 `examples/` is ordered; each file is standalone, prints what it did, and asserts
@@ -106,11 +106,13 @@ camels/          released parameter sets (npz + csv), calibration seeds, metrics
 examples/        numbered, runnable, self-checking
   data/          8-basin CAMELS sample so examples work offline
 scripts/
-  verify.py            the correctness table in the README
-  calibrate_camels.py  full 665-basin calibration driver
+  selfcheck.py         eight checks in ~20 s, non-zero exit on failure  ← run this
+  verify.py            numerical identity vs a reference implementation
+  gen_parameter_table.py  regenerates docs/parameters.md from the code
+  calibrate_camels.py  full 665-catchment calibration driver
   select_camels.py     best-of-N selection and the SAC-SMA paired comparison
-  fetch_camels.py      obtain the full 665-basin forcing (not in git: 96 MB)
-tests/           50+ tests: physics, gradients, execution, regression
+  fetch_camels.py      obtain the full 665-catchment forcing (not in git: 96 MB)
+tests/           53 tests: physics, gradients, execution, regression
 docs/
   model.md       the process chain, equation by equation
   parameters.md  all 16 parameters: meaning, units, ranges, what they trade off
@@ -129,9 +131,12 @@ docs/
 **v1.0 is the default choice.** Test window is 1989-10-01..1999-09-30, which the
 calibration never touched.
 
-**v2A is a trap if you use it wrongly.** It was calibrated 1983–2000 for a study
-needing a frozen model over 2003–2014, so its calibration period *contains* the
-benchmark test window. Never score it on the benchmark test window.
+**v2A is a trap in two ways.** It was calibrated 1983–2000 for a study needing a
+frozen model over 2003–2014, so its calibration period *contains* the benchmark
+test window — never score it there. And it predates the provenance format: its
+metadata holds only `ids`, `bounds` and `uh_kmin_h`, so it has no stored metrics
+and `config_from_meta` fills `dt_hours` and `uh_nstep` from defaults. A loop over
+all four sets that reads `meta["metric_test_nse"]` raises `KeyError` on v2A.
 
 ## Things that will bite you
 
@@ -154,13 +159,25 @@ benchmark test window. Never score it on the benchmark test window.
 ## Verifying a change
 
 ```bash
-pytest -q                    # must stay green
-python scripts/verify.py     # numerical identity table: bit-exactness,
-                             # finite differences, water balance, CPU vs CUDA
+python scripts/selfcheck.py  # first: self-contained, ~20 s, non-zero exit on failure
+pytest -q                    # must stay green, ~2 min
+python scripts/gen_parameter_table.py --check   # docs still match the code
+python scripts/verify.py     # numerical identity: finite differences, water
+                             # balance, checkpointing, CPU vs CUDA
 ```
 
-`scripts/verify.py` is the authority on whether a change altered the model.
-Several entries are exact zeros, so any drift shows immediately.
+`selfcheck.py` and `pytest` are self-contained and are what CI runs.
+
+`verify.py` goes further but **three of its rows need an external reference
+implementation** that is not in this repository. Without it those rows print
+`SKIPPED`; the remaining checks still run. Point `DCREST_STUDY_ROOT` at a
+checkout that has `crest_blackbox.py` to enable them, or use
+`--require-reference` to make their absence an error.
+
+Tolerances, not zeros. The internal checks that should be exactly zero are the
+checkpointing and router equivalences; the reference comparisons agree to
+float64 round-off (~1e-14) and, in float32, to ~2e-5 after 3000 recursive steps.
+Read the table's own tolerance column rather than expecting 0.
 
 ## Scope
 
