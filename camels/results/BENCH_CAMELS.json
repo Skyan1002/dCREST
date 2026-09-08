@@ -1,0 +1,71 @@
+{
+ "protocol": "Newman et al. 2017 / Kratzert et al. 2019: train 1999-10-01..2008-09-30, test 1989-10-01..1999-09-30, spin-up 1996-10 / 1986-10; 528 of the 531-basin subset; median NSE across basins; parameters selected on the training window only",
+ "verification": "independent re-score of saved parameters agrees to 9.2e-5 per basin; obs and Daymet precipitation bit-identical to the CREST_Global certified pack (itself r=1.0000 vs Newman published OBS_RUN)",
+ "convergence": "test NSE flat from phase 0 (512 iter) to phase 3 (2048 iter): 0.662/0.664/0.663/0.664 - optimization budget is not the limiter",
+ "runs": {
+  "Daymet, NSE loss, 531-subset": {
+   "n": 528,
+   "train_nse": 0.7848,
+   "train_kge": 0.8151,
+   "test_nse": 0.6643,
+   "test_kge": 0.7296,
+   "test_nse_mean": 0.5152,
+   "test_beta": 0.9613,
+   "test_frac_neg": 0.017,
+   "test_frac_gt05": 0.8333
+  },
+  "Daymet, NSE loss, seed 1": {
+   "n": 528,
+   "train_nse": 0.7844,
+   "train_kge": 0.816,
+   "test_nse": 0.6635,
+   "test_kge": 0.7289,
+   "test_nse_mean": 0.6161,
+   "test_beta": 0.9596,
+   "test_frac_neg": 0.0152,
+   "test_frac_gt05": 0.8333
+  },
+  "Maurer, NSE loss, 531-subset": {
+   "n": 528,
+   "train_nse": 0.7606,
+   "train_kge": 0.7995,
+   "test_nse": 0.6545,
+   "test_kge": 0.7242,
+   "test_nse_mean": 0.5306,
+   "test_beta": 0.955,
+   "test_frac_neg": 0.017,
+   "test_frac_gt05": 0.8409
+  },
+  "Daymet, NSE loss, all 665": {
+   "n": 665,
+   "train_nse": 0.7849,
+   "train_kge": 0.8138,
+   "test_nse": 0.6603,
+   "test_kge": 0.7264,
+   "test_nse_mean": 0.4404,
+   "test_beta": 0.9603,
+   "test_frac_neg": 0.0226,
+   "test_frac_gt05": 0.806
+  },
+  "Daymet, KGE loss, 531-subset": {
+   "n": 528,
+   "train_nse": 0.7544,
+   "train_kge": 0.8763,
+   "test_nse": 0.6368,
+   "test_kge": 0.7616,
+   "test_nse_mean": 0.5778,
+   "test_beta": 0.9535,
+   "test_frac_neg": 0.0322,
+   "test_frac_gt05": 0.7973
+  }
+ },
+ "reference_medians_published": {
+  "LSTM_ensemble": 0.74,
+  "HBV_upper_bound": 0.68,
+  "SAC_SMA_Snow17": 0.662,
+  "mHM": 0.66,
+  "HBV_rerun_same_harness": 0.639,
+  "VIC": 0.55,
+  "source": "Kratzert et al. 2019 as compiled in CREST_Global docs/camels_bench_log.md; SAC-SMA re-scored from Newman published simulations"
+ }
+}

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dcrest"
+version = "1.0.0"
+description = "dCREST: a differentiable, GPU-parallel implementation of the CREST rainfall-runoff model (PyTorch)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "HyDROS Lab, University of Oklahoma" }]
+keywords = ["hydrology", "rainfall-runoff", "CREST", "EF5", "differentiable", "pytorch"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Hydrology",
+]
+dependencies = ["torch>=2.0", "numpy>=1.22"]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+io = ["pandas>=1.5"]
+
+[project.urls]
+Source = "https://github.com/HyDROSLab/dcrest"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::UserWarning"]
+log_cli_level = "WARNING"
+addopts = "-p no:cacheprovider"

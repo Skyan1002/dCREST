@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+# the full CAMELS forcing is fetched, not tracked (96 MB)
+camels/forcing_daily.npz

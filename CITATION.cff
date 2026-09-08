@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+title: "dcrest: a differentiable implementation of the CREST rainfall-runoff model, with dCREST-CAMELS parameter sets"
+message: "If you use this software or the parameter sets, please cite it."
+type: software
+authors:
+  - name: "HyDROS Lab, University of Oklahoma"
+license: MIT
+repository-code: "https://github.com/HyDROSLab/dcrest"
+version: "1.0.0"
+keywords:
+  - hydrology
+  - rainfall-runoff
+  - CREST
+  - EF5
+  - differentiable modelling
+  - CAMELS
+  - PyTorch
+abstract: >-
+  A differentiable, GPU-parallel PyTorch implementation of CREST (Coupled
+  Routing and Excess Storage), the hydrologic core of the EF5 operational
+  forecasting system. Discharge is differentiable with respect to both the
+  parameters and the meteorological forcing, so parameters can be calibrated by
+  gradient descent across thousands of catchments simultaneously and the model
+  can be inverted for its input. Ships with dCREST-CAMELS, calibrated parameter
+  sets for 665 CAMELS-US catchments produced under the community benchmark
+  protocol.
+references:
+  - type: article
+    authors:
+      - family-names: Wang
+        given-names: Jiahu
+    title: "The coupled routing and excess storage (CREST) distributed hydrological model"
+    journal: "Hydrological Sciences Journal"
+    volume: 56
+    start: 84
+    end: 98
+    year: 2011

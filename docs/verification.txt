@@ -1,0 +1,15 @@
+pycrest 1.0.0 — verification
+
+check                                            result           note
+------------------------------------------------------------------------------------------------------
+discharge vs reference implementation (float64)  0.00e+00 mm/day  32 CAMELS basins x 3000 days
+discharge vs reference implementation (float32)  0.00e+00 mm/day  32 CAMELS basins x 3000 days
+dQ/dP vs reference implementation (float64)      0.00e+00         relative to peak 1.41e+02
+autodiff vs central finite differences           6.99e-08         worst of 16 parameters (kmult)
+water balance closure                            4.63e-16         relative residual
+unit-hydrograph mass conservation                2.22e-16         sum of weights minus one
+grouped-convolution router vs reference loop     0.00e+00         
+gradient with vs without checkpointing           0.00e+00         
+CPU vs CUDA (float32)                            1.65e-05         relative
+GPU forward+backward, compile_step=False         63.75 s          512 units x 4000 steps, peak 0.07 GiB (NVIDIA RTX 4500 Ada Generation)
+GPU forward+backward, compile_step=True          7.57 s           512 units x 4000 steps, peak 0.07 GiB (NVIDIA RTX 4500 Ada Generation)
