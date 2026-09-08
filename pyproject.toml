@@ -25,7 +25,7 @@ test = ["pytest>=7.0"]
 io = ["pandas>=1.5"]
 
 [project.urls]
-Source = "https://github.com/HyDROSLab/dcrest"
+Source = "https://github.com/Skyan1002/dCREST"
 # Update both this and README/CITATION.cff if the repository moves.
 
 [tool.setuptools.packages.find]

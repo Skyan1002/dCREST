@@ -5,7 +5,7 @@ type: software
 authors:
   - name: "HyDROS Lab, University of Oklahoma"
 license: MIT
-repository-code: "https://github.com/HyDROSLab/dcrest"
+repository-code: "https://github.com/Skyan1002/dCREST"
 version: "1.0.0"
 keywords:
   - hydrology
