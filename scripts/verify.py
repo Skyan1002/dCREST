@@ -70,7 +70,8 @@ def main():
     if have_ref:
         common, cf, cp, T, f, z, keys = _camels()
         kmin = float(z["uh_kmin_h"]) if "uh_kmin_h" in z.files else None
-        cfg = CrestConfig(uh_kmin_h=kmin, uh_method="loop")
+        # the reference implementation uses the classic CREST runoff split
+        cfg = CrestConfig(uh_kmin_h=kmin, uh_method="loop", runoff_partition="classic")
 
         def pack(dt):
             p = {k: torch.tensor(z[k][cp], dtype=dt) for k in keys}

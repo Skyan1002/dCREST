@@ -108,11 +108,12 @@ examples/        numbered, runnable, self-checking
 scripts/
   selfcheck.py         eight checks in ~20 s, non-zero exit on failure  ← run this
   verify.py            numerical identity vs a reference implementation
+  verify_ef5_partition.py  soil kernel vs EF5's verbatim CRESTPhys C++ (needs --ef5-src)
   gen_parameter_table.py  regenerates docs/parameters.md from the code
   calibrate_camels.py  full 665-catchment calibration driver
   select_camels.py     best-of-N selection and the SAC-SMA paired comparison
   fetch_camels.py      obtain the full 665-catchment forcing (not in git: 96 MB)
-tests/           53 tests: physics, gradients, execution, regression
+tests/           59 tests: physics, gradients, execution, regression
 docs/
   model.md       the process chain, equation by equation
   parameters.md  all 16 parameters: meaning, units, ranges, what they trade off
@@ -155,6 +156,12 @@ all four sets that reads `meta["metric_test_nse"]` raises `KeyError` on v2A.
   recursive steps, because fusion reassociates additions. Both are correct.
 - **NaN in observations is normal.** USGS discharge has gaps. Always pass a
   mask; the metrics take one.
+- **A parameter set belongs to one runoff partition.** `"ef5"` (default on this
+  branch) sends `min(R, temX)` to the aquifer; `"classic"` (releases ≤ 1.0.0, all
+  of `camels/`) sends it to interflow. The same parameters route water very
+  differently under the two, so build the config with `config_from_meta(meta)`,
+  which carries the partition and treats older sets as `"classic"`, never with a
+  bare `CrestConfig()`.
 
 ## Verifying a change
 

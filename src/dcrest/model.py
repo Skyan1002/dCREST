@@ -63,6 +63,12 @@ class CrestConfig:
         Wrap the per-step function in ``torch.compile``. Worth it for long runs
         on CUDA (the model is kernel-launch bound, not compute bound); adds a
         one-off compilation cost of a few seconds.
+    ``runoff_partition``
+        How the soil excess is split (see :mod:`dcrest.kernels.soil`).
+        ``"ef5"`` (default) is EF5's CRESTPhys: the part the soil can pass at
+        the interflow rate recharges the aquifer. ``"classic"`` is classic
+        CREST's interflow/overland split, used by versions up to 1.0.0 and by
+        the released dCREST-CAMELS parameter sets.
     ``bounds``
         Parameter ranges to validate against. ``None`` means the package
         defaults. A released set calibrated under widened ranges carries its
@@ -79,14 +85,22 @@ class CrestConfig:
     sanitize: bool = True
     compile_step: bool = False
     bounds: Optional[Mapping[str, tuple]] = None
+    runoff_partition: str = "ef5"
+
+    def __post_init__(self):
+        if self.runoff_partition not in ("ef5", "classic"):
+            raise ValueError("runoff_partition must be 'ef5' or 'classic', "
+                             f"got {self.runoff_partition!r}")
 
     def legacy(self) -> "CrestConfig":
         """The configuration of the first published calibration of this model."""
-        return replace(self, uh_kmin_h=None, uh_method="loop")
+        return replace(self, uh_kmin_h=None, uh_method="loop",
+                       runoff_partition="classic")
 
 
 #: Reproduces ``crest_blackbox.simulate`` from the amortized-inversion study.
-LEGACY_CONFIG = CrestConfig(uh_kmin_h=None, uh_method="loop")
+LEGACY_CONFIG = CrestConfig(uh_kmin_h=None, uh_method="loop",
+                            runoff_partition="classic")
 
 
 def initial_states(params: Mapping[str, Tensor], n_units: int, *,
@@ -112,7 +126,7 @@ def _make_step(cfg: CrestConfig, with_et: bool = False):
         liquid, pet_soil, wt, et_canopy = interception_step(
             wt, liquid, PET_t, p["ke"], capacity)
         out = crestphys_step(p, sm, gw, liquid, pet_soil, cfg.dt_hours,
-                             return_et=with_et)
+                             return_et=with_et, partition=cfg.runoff_partition)
         if with_et:
             fast, inter, base, sm, gw, et_soil = out
         else:

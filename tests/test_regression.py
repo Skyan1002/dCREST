@@ -9,6 +9,7 @@ that matters for reproducibility.
 import numpy as np
 import pytest
 import torch
+from dataclasses import replace
 
 import dcrest
 from dcrest.model import CrestConfig
@@ -17,7 +18,9 @@ from dcrest.model import CrestConfig
 def _legacy_config(camels):
     # The released set was calibrated with a 1 h UH clamp; older sets used the
     # dt/2 default. Honour whatever the file records.
-    return CrestConfig(uh_kmin_h=camels["uh_kmin_h"], uh_method="loop")
+    # the reference implementation uses the classic CREST runoff split
+    return CrestConfig(uh_kmin_h=camels["uh_kmin_h"], uh_method="loop",
+                       runoff_partition="classic")
 
 
 def _to_torch(camels, dtype=torch.float64, device="cpu"):
@@ -57,9 +60,7 @@ def test_conv_and_loop_routing_agree(reference, camels):
     (P, TA, PET), p = _to_torch(camels, torch.float64)
     base = _legacy_config(camels)
     q_loop = dcrest.simulate(P, TA, PET, p, base)
-    q_conv = dcrest.simulate(P, TA, PET, p,
-                              CrestConfig(uh_kmin_h=base.uh_kmin_h,
-                                          uh_method="conv"))
+    q_conv = dcrest.simulate(P, TA, PET, p, replace(base, uh_method="conv"))
     assert (q_loop - q_conv).abs().max().item() <= 1e-10
 
 
@@ -82,8 +83,7 @@ def test_checkpointing_is_transparent(camels):
     """Checkpointed and plain runs agree in value and in gradient."""
     (P, TA, PET), p = _to_torch(camels, torch.float64)
     cfg = _legacy_config(camels)
-    ckpt = CrestConfig(uh_kmin_h=cfg.uh_kmin_h, uh_method=cfg.uh_method,
-                       checkpoint_every=97)
+    ckpt = replace(cfg, checkpoint_every=97)       # identical except checkpointing
 
     Pa = P.clone().requires_grad_(True)
     qa = dcrest.simulate(Pa, TA, PET, p, cfg)

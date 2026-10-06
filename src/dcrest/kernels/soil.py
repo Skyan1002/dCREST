@@ -1,11 +1,34 @@
 """CRESTPhys soil column and aquifer.
 
-A faithful port of ``CRESTPHYSModel::WaterBalanceInt`` from the EF5 development
-fork, reduced to one modelling unit per tensor element. The NumPy sibling of
-this kernel was verified element-wise against the verbatim C++ (max abs
-difference ~1e-9 mm/s on year-long randomised multi-cell input); this PyTorch
-version reproduces it with ``torch.where`` in place of the C++ branches and
-guarded powers, so it is subdifferentiable everywhere.
+Port of ``CRESTPHYSModel::WaterBalanceInt`` from the EF5 development fork,
+reduced to one modelling unit per tensor element, with ``torch.where`` in place
+of the C++ branches and guarded powers, so it is subdifferentiable everywhere.
+
+Runoff partition
+----------------
+The soil excess ``R`` is split by the interflow capacity
+``temX = (SM + SM') / (2 wm) * fc * dt``. Two splits exist, selected by
+``partition``:
+
+``"ef5"`` (default)
+    EF5's CRESTPhys (``CRESTPhysModel.cpp``): ``min(R, temX)`` **recharges the
+    aquifer**, ``R - min(R, temX)`` leaves as interflow, and impervious plus
+    above-capacity water is overland flow, in both the wet and the dry branch.
+    With this split the kernel reproduces the verbatim C++ to float32 round-off
+    on randomised multi-year input (``scripts/verify_ef5_partition.py``).
+``"classic"``
+    The split of EF5's classic CREST (``CRESTModel.cpp``): ``min(R, temX)`` is
+    interflow, the rest plus impervious water is overland flow, above-capacity
+    water is interflow, and nothing recharges the aquifer from ``R``. Versions
+    up to 1.0.0 used this split together with the CRESTPhys aquifer -- a
+    combination that is in no single EF5 model -- while describing it as a port
+    of CRESTPhys; their element-wise check was against ``CRESTModel.cpp``. The
+    released dCREST-CAMELS parameter sets were calibrated with it, so stored
+    sets without a recorded partition load as ``"classic"``.
+
+The choice matters for what ``fc`` means. Under ``"classic"`` it only splits
+fast runoff between two fast paths and is weakly identified; under ``"ef5"`` it
+sets how much event water recharges the aquifer, i.e. the fast/slow split.
 
 Two structural features distinguish CREST from the HBV/GR family and are worth
 stating because they are what the parameters mean:
@@ -65,7 +88,8 @@ def _safe_pow(base: Tensor, exponent: Tensor) -> Tensor:
 
 def crestphys_step(p: Mapping[str, Tensor], sm: Tensor, gw: Tensor,
                    precip_mm: Tensor, pet_mm: Tensor,
-                   dt_hours: float = 24.0, return_et: bool = False):
+                   dt_hours: float = 24.0, return_et: bool = False,
+                   partition: str = "ef5"):
     """One CRESTPhys step. All fluxes in **mm per step**.
 
     Parameters
@@ -82,12 +106,17 @@ def crestphys_step(p: Mapping[str, Tensor], sm: Tensor, gw: Tensor,
         Step length. Rate parameters (``fc`` per hour, ``ksoil``/``gwc`` per
         day) are scaled to the step; at ``dt_hours=24`` the scaling is the
         identity, which is the daily reference configuration.
+    partition
+        ``"ef5"`` (EF5 CRESTPhys) or ``"classic"`` (classic CREST split); see
+        the module docstring.
 
     Returns
     -------
     ``(overland, interflow, baseflow, sm_new, gw_new)``, and additionally
     actual ET if ``return_et``.
     """
+    if partition not in ("ef5", "classic"):
+        raise ValueError(f"partition must be 'ef5' or 'classic', got {partition!r}")
     kd = dt_hours / 24.0
     WM, B, IM, KE, FC = p["wm"], p["b"], p["im"], p["ke"], p["fc"]
     KSOIL, HMAX, GWC, GWE = p["ksoil"], p["hmaxaq"], p["gwc"], p["gwe"]
@@ -123,8 +152,17 @@ def crestphys_step(p: Mapping[str, Tensor], sm: Tensor, gw: Tensor,
 
     # interflow capacity: mean wetness over the step times the interflow rate
     temX = (SM_c + Wo_w) / WM / 2.0 * (FC * dt_hours)
-    inter_w = torch.minimum(R_w, temX) + interflowExcess_w
-    over_w = R_w - torch.minimum(R_w, temX) + precipImperv
+    capped = torch.minimum(R_w, temX)
+    if partition == "ef5":
+        # CRESTPhysModel.cpp: the capped part recharges the aquifer
+        recharge_w = capped
+        inter_w = R_w - capped
+        over_w = precipImperv + interflowExcess_w
+    else:
+        # CRESTModel.cpp: the capped part is interflow, nothing recharges
+        recharge_w = torch.zeros_like(R_w)
+        inter_w = capped + interflowExcess_w
+        over_w = R_w - capped + precipImperv
 
     # ---- dry branch: soil ET, then aquifer-supported residual ET -----------
     interflowExcess_d = torch.clamp(SM0 - WM, min=0.0)
@@ -138,10 +176,15 @@ def crestphys_step(p: Mapping[str, Tensor], sm: Tensor, gw: Tensor,
     resET_d = torch.minimum(unmet * gw / HMAX, gw)      # riparian / deep-rooted
 
     wet = precip > adjPET
-    over = torch.where(wet, over_w, torch.zeros_like(SM0))
-    inter = torch.where(wet, inter_w, interflowExcess_d)
+    if partition == "ef5":            # above-capacity water is overland flow
+        over = torch.where(wet, over_w, interflowExcess_d)
+        inter = torch.where(wet, inter_w, torch.zeros_like(SM0))
+    else:                             # above-capacity water is interflow
+        over = torch.where(wet, over_w, torch.zeros_like(SM0))
+        inter = torch.where(wet, inter_w, interflowExcess_d)
     Wo = torch.where(wet, Wo_w, Wo_d)
-    gw = gw - torch.where(wet, torch.zeros_like(SM0), resET_d)
+    gw = (gw - torch.where(wet, torch.zeros_like(SM0), resET_d)
+          + torch.where(wet, recharge_w, torch.zeros_like(SM0)))
 
     # ---- soil drainage to the aquifer, from free water only ----------------
     drainable = Wo if PTENS is None else torch.clamp(Wo - PTENS * WM, min=0.0)

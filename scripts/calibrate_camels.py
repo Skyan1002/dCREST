@@ -167,6 +167,9 @@ def main():
     ap.add_argument("--var-floor", type=float, default=0.10)
     ap.add_argument("--checkpoint-every", type=int, default=96)
     ap.add_argument("--uh-kmin-h", type=float, default=1.0)
+    ap.add_argument("--partition", default="ef5", choices=["ef5", "classic"],
+                    help="runoff partition: EF5 CRESTPhys (default) or the classic "
+                         "CREST split used by releases up to 1.0.0")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--compile", action="store_true", default=True)
     ap.add_argument("--no-compile", dest="compile", action="store_false")
@@ -178,8 +181,10 @@ def main():
     os.makedirs(f"{HERE}/params", exist_ok=True)
     cfg = CrestConfig(uh_kmin_h=args.uh_kmin_h,
                       checkpoint_every=args.checkpoint_every,
-                      compile_step=args.compile)
+                      compile_step=args.compile,
+                      runoff_partition=args.partition)
     data = load(args)
+    print(f"[{args.tag}] runoff partition: {cfg.runoff_partition}", flush=True)
     print(f"[{args.tag}] {len(data['ids'])} basins | train {TRAIN[0]}..{TRAIN[1]} "
           f"({data['n_train']} d) test {TEST[0]}..{TEST[1]} ({data['n_test']} d) "
           f"| {args.forcing} loss={args.loss}{'/' + args.transform if args.transform else ''} "

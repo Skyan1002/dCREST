@@ -45,7 +45,7 @@ from .params import (BOUNDS, BOUNDS_TENSION, DEFAULTS, PARAM_NAMES,
                      gradient_activity)
 from .routing import gamma_uh, geomorphic_lag_hours
 
-__version__ = "1.0.0"
+__version__ = "1.1.0.dev0"
 
 
 def default_parameters(n_units: int, area_km2, *, dtype=None, device="cpu",

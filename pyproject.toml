@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dcrest"
-version = "1.0.0"
+version = "1.1.0.dev0"
 description = "dCREST: a differentiable, GPU-parallel implementation of the CREST rainfall-runoff model (PyTorch)"
 readme = "README.md"
 requires-python = ">=3.9"

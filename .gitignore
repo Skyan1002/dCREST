@@ -9,3 +9,9 @@ venv/
 .DS_Store
 # the full CAMELS forcing is fetched, not tracked (96 MB)
 camels/forcing_daily.npz
+
+# built by scripts/verify_ef5_partition.py
+scripts/ef5_ref/body.inc
+scripts/ef5_ref/crestphys_ref
+scripts/ef5_ref/case.txt
+scripts/ef5_ref/out.txt

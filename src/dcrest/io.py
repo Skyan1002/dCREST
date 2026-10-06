@@ -36,6 +36,7 @@ def save_parameters(path: str, params: Mapping[str, Tensor], ids: Sequence[str],
         meta["uh_nstep"] = np.asarray(int(config.uh_nstep))
         meta["uh_kmin_h"] = np.asarray(
             np.nan if config.uh_kmin_h is None else float(config.uh_kmin_h))
+        meta["runoff_partition"] = np.asarray(str(config.runoff_partition))
     for k, v in (metrics or {}).items():
         meta[f"metric_{k}"] = np.asarray(v)
     for k, v in (provenance or {}).items():
@@ -49,8 +50,8 @@ def load_parameters(path: str, *, device="cpu", dtype=torch.float32,
                     subset: Optional[Sequence[str]] = None):
     """Load a parameter set. Returns ``(params, meta)``.
 
-    ``meta`` carries ``ids``, the bounds the set was calibrated under, and the
-    UH clamp. Build a :class:`~dcrest.model.CrestConfig` from
+    ``meta`` carries ``ids``, the bounds the set was calibrated under, the UH
+    clamp and the runoff partition (``"classic"`` for sets that predate it). Build a :class:`~dcrest.model.CrestConfig` from
     ``meta['uh_kmin_h']`` rather than assuming the default, or the reloaded set
     will not reproduce its own calibration.
 
@@ -81,6 +82,9 @@ def load_parameters(path: str, *, device="cpu", dtype=torch.float32,
         if k in z.files:
             v = float(np.asarray(z[k]))
             meta[k] = None if (k == "uh_kmin_h" and np.isnan(v)) else v
+    # absent in sets written up to 1.0.0, which all used the classic split
+    meta["runoff_partition"] = (str(np.asarray(z["runoff_partition"]))
+                                if "runoff_partition" in z.files else "classic")
     n_all = len(np.asarray(z["ids"]))
     for k in z.files:
         if k.startswith(("metric_", "prov_")):
@@ -102,6 +106,9 @@ def config_from_meta(meta: Mapping, **overrides):
         kw["uh_kmin_h"] = meta["uh_kmin_h"]
     if meta.get("bounds"):
         kw["bounds"] = meta["bounds"]
+    # sets written before the partition was recorded were calibrated with the
+    # classic split (every release up to 1.0.0)
+    kw["runoff_partition"] = str(meta.get("runoff_partition", "classic"))
     kw.update(overrides)
     return CrestConfig(**kw)
 

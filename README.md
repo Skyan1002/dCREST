@@ -24,6 +24,19 @@ model-specific file formats.
 > Using an agent on this repository? Point it at [`AGENTS.md`](AGENTS.md) — it
 > is the short version, with the rules that prevent silently-wrong results.
 
+> **Branch `ef5-partition`.** The soil kernel now follows EF5's CRESTPhys runoff
+> partition by default: the part of the soil excess the column can pass at the
+> interflow rate (`min(R, temX)`) **recharges the aquifer**, only the remainder
+> leaves as interflow, and impervious and above-capacity water is overland flow.
+> Up to 1.0.0 the kernel used classic CREST's split (`min(R, temX)` as interflow,
+> the rest as overland flow, no recharge from `R`) together with the CRESTPhys
+> aquifer, which is in no single EF5 model. `CrestConfig(runoff_partition=...)`
+> selects `"ef5"` (default here) or `"classic"`; the released dCREST-CAMELS sets
+> were calibrated with `"classic"` and load as such. Compare the two with
+> `python scripts/calibrate_camels.py --partition ef5` / `--partition classic`,
+> and check the kernel against EF5's C++ with `scripts/verify_ef5_partition.py`.
+> See "Runoff partition" below.
+
 ## Quick start
 
 ```python
@@ -201,10 +214,39 @@ The three "vs reference implementation" rows need an independent implementation
 that is **not part of this repository**. Without it they print `SKIPPED` and the
 other rows still run; `--require-reference` makes their absence an error.
 
-**Provenance.** The NumPy sibling of this water-balance kernel was verified
-element-wise against the verbatim EF5 C++ (`CRESTModel.cpp`, `Snow17Model.cpp`)
-on randomised year-long multi-cell input, agreeing to ~1e-9 mm/s — single-precision
-round-off in EF5's own state storage.
+**Provenance.** The 1.0.0 kernel's runoff split was checked against EF5's
+classic `CRESTModel.cpp`, while its aquifer comes from CRESTPhys
+(`CRESTPhysModel.cpp`), which splits the runoff differently — so no single EF5
+model was reproduced in full, and the earlier statement that the kernel was a
+verified port of CRESTPhys was not accurate. With `runoff_partition="ef5"` the
+kernel reproduces EF5's `CRESTPHYSModel::WaterBalanceInt`, extracted verbatim
+from the source, to float32 round-off on 200 random units over three years
+(`scripts/verify_ef5_partition.py`: max differences 3e-6 / 8e-6 / 2e-3 mm/day in
+overland / interflow / baseflow, runoff shares identical). The reference rows of
+the table above use `"classic"`, which is what the reference implementation does.
+
+## Runoff partition
+
+The soil excess `R` is split by an interflow capacity
+`temX = (SM + SM') / (2 wm) · fc · Δt`:
+
+| | EF5 CRESTPhys (`"ef5"`, default on this branch) | classic CREST (`"classic"`, releases ≤ 1.0.0) |
+|---|---|---|
+| `min(R, temX)` | recharges the aquifer | interflow |
+| `R − min(R, temX)` | interflow | overland flow |
+| impervious water | overland flow | overland flow |
+| above-capacity water `(SM − wm)⁺` | overland flow | interflow |
+
+What this changes is the meaning of `fc`. Under `"classic"` it only divides fast
+runoff between two fast paths, which is why it was inert in 100% of catchments
+at the old (0, 150) mm/h range and is still weakly identified at (0, 5). Under
+`"ef5"` it sets how much event water recharges the aquifer — the fast/slow split
+of each storm — so it should be better identified and more interpretable. With
+the same parameters the two splits route water very differently (on random
+parameters, interflow and baseflow shares 0.20 / 0.61 under `"classic"` against
+0.11 / 0.79 under `"ef5"`), so a set calibrated under one must not be run under
+the other; `load_parameters` and `config_from_meta` carry the partition, and
+sets that predate it load as `"classic"`.
 
 ## Performance
 

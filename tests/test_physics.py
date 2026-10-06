@@ -182,3 +182,59 @@ def test_tension_parameters_receive_gradient(synthetic):
     for k in ("ptens", "plp"):
         g = p[k].grad
         assert torch.isfinite(g).all() and (g != 0).any(), f"{k} has no gradient"
+
+
+# ---- runoff partition: EF5 CRESTPhys vs classic CREST --------------------------
+
+@pytest.mark.parametrize("partition", ["ef5", "classic"])
+def test_water_balance_closes_under_both_partitions(synthetic, partition):
+    """The split only moves water between pathways; none is created or lost."""
+    p = _params(synthetic)
+    q, aux = _run(synthetic, p, CrestConfig(runoff_partition=partition))
+    init = dcrest.initial_states(p, synthetic["n"])
+    stored = sum(aux[k] - init[k] for k in ("swe", "canopy", "sm", "gw", "fast"))
+    residual = (synthetic["P"].to(torch.float64).sum(0)
+                - aux["runoff"].sum(0) - aux["et"].sum(0) - stored)
+    rel = (residual.abs() / synthetic["P"].to(torch.float64).sum(0)).max().item()
+    assert rel < 1e-12, f"{partition}: max relative residual {rel:.3e}"
+
+
+def _saturated_day(partition):
+    """One wet day on a saturated column: R = 48 mm, temX = fc * 24 = 12 mm."""
+    from dcrest.kernels.soil import crestphys_step
+    t = lambda v: torch.tensor([v], dtype=torch.float64)
+    p = {"wm": t(100.0), "b": t(1.0), "im": t(0.0), "ke": t(1.0), "fc": t(0.5),
+         "ksoil": t(0.0), "hmaxaq": t(5000.0), "gwc": t(1e-9), "gwe": t(1.0)}
+    sm0, gw0 = t(100.0), t(1000.0)
+    over, inter, base, sm, gw = crestphys_step(p, sm0, gw0, t(50.0), t(2.0),
+                                               24.0, partition=partition)
+    return over.item(), inter.item(), (gw - gw0 + base).item()
+
+
+def test_ef5_partition_recharges_the_aquifer():
+    """EF5 CRESTPhys: min(R, temX) -> aquifer, R - min -> interflow, no overland."""
+    over, inter, recharge = _saturated_day("ef5")
+    assert recharge == pytest.approx(12.0, abs=1e-9)
+    assert inter == pytest.approx(36.0, abs=1e-9)
+    assert over == pytest.approx(0.0, abs=1e-12)
+
+
+def test_classic_partition_has_no_recharge_from_runoff():
+    """Classic CREST: min(R, temX) -> interflow, R - min -> overland, no recharge."""
+    over, inter, recharge = _saturated_day("classic")
+    assert recharge == pytest.approx(0.0, abs=1e-9)
+    assert inter == pytest.approx(12.0, abs=1e-9)
+    assert over == pytest.approx(36.0, abs=1e-9)
+
+
+def test_unknown_partition_is_rejected():
+    with pytest.raises(ValueError):
+        CrestConfig(runoff_partition="ef6")
+
+
+def test_stored_sets_without_a_partition_load_as_classic():
+    """Releases up to 1.0.0 were calibrated with the classic split."""
+    assert dcrest.config_from_meta({}).runoff_partition == "classic"
+    assert dcrest.config_from_meta({"runoff_partition": "ef5"}).runoff_partition == "ef5"
+    assert dcrest.LEGACY_CONFIG.runoff_partition == "classic"
+    assert CrestConfig().legacy().runoff_partition == "classic"

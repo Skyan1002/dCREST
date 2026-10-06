@@ -61,15 +61,23 @@ integral of the curve between `A` and `A + P_soil`:
 
 Setting `b → 0` collapses the distribution to a single capacity, i.e. a bucket.
 
-The excess is then split between interflow and overland flow by an interflow
-capacity proportional to mean wetness over the step:
+The excess is then split by an interflow capacity proportional to mean wetness
+over the step, in one of two ways (`CrestConfig.runoff_partition`):
 
     temX      = (SM_c + SM') / (2 wm) · fc · Δt
+
+    "ef5"     (EF5 CRESTPhys, CRESTPhysModel.cpp; default)
+    recharge  = min(R, temX)                  → aquifer, added with drainage below
+    interflow = R − min(R, temX)
+    overland  = P_imperv + (SM − wm)⁺
+
+    "classic" (classic CREST, CRESTModel.cpp; releases ≤ 1.0.0)
     interflow = min(R, temX) + (SM − wm)⁺
     overland  = R − min(R, temX) + P_imperv
 
-`fc` is in mm/h; `temX` is therefore a depth per step. This term is the reason
-`fc`'s range matters — see the "Dead parameters" section of the README.
+`fc` is in mm/h; `temX` is therefore a depth per step. Under `"classic"` it only
+divides fast runoff between two fast paths (see "Dead parameters" in the README);
+under `"ef5"` it sets how much of each storm recharges the aquifer.
 
 ### Dry branch (`L ≤ adjPET`)
 
@@ -80,13 +88,13 @@ deep-rooted uptake.
     ET_soil   = min( (adjPET − L) SM_c / wm,  SM_c );      SM' = SM_c − ET_soil
     unmet     = (adjPET − L − ET_soil)⁺
     ET_gw     = min(unmet · GW / hmaxaq,  GW);             GW ← GW − ET_gw
-    overland  = 0
-    interflow = (SM − wm)⁺
+    overland  = 0,          interflow = (SM − wm)⁺     ("classic")
+    overland  = (SM − wm)⁺, interflow = 0              ("ef5")
 
 ### Aquifer (both branches)
 
     drainage  = min(ksoil · k_d · SM',  SM');   SM' ← SM' − drainage
-    GW       ← GW + drainage
+    GW       ← GW + drainage + recharge          (recharge = 0 under "classic")
     spill     = (GW − hmaxaq)⁺;                 GW ← min(GW, hmaxaq)
     baseflow  = min( gwc · k_d · [exp(gwe · GW / hmaxaq) − 1],  GW )
     GW       ← GW − baseflow
