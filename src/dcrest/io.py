@@ -20,9 +20,15 @@ def save_parameters(path: str, params: Mapping[str, Tensor], ids: Sequence[str],
 
     The stored ``uh_kmin_h`` matters: a set calibrated under one UH clamp gives
     different discharge under another, so :func:`load_parameters` refuses to
-    guess and returns the stored config alongside the parameters.
+    guess and returns the stored config alongside the parameters. The bounds
+    written are ``bounds`` if given, else ``config.bounds``, else the package
+    defaults (:func:`~dcrest.params.resolve_bounds`), so re-saving a loaded set
+    with its own config keeps its ranges and any extension parameters.
     """
-    b = _params.BOUNDS if bounds is None else dict(bounds)
+    b = _params.resolve_bounds(bounds, config)
+    missing = [k for k in b if k not in params]
+    if missing:
+        raise KeyError(f"parameters missing for the bounds being saved: {missing}")
     arrays = {k: np.asarray(_to_np(params[k]), dtype=np.float32) for k in b}
     arrays["area_km2"] = np.asarray(_to_np(params["area_km2"]), dtype=np.float32)
     meta = {
@@ -110,7 +116,9 @@ def to_dataframe(params: Mapping[str, Tensor], ids: Sequence[str]):
     """Parameter set as a tidy ``pandas.DataFrame`` (one row per unit)."""
     import pandas as pd
     cols = {"id": [str(i) for i in ids]}
-    cols.update({k: _to_np(params[k]) for k in _params.BOUNDS})
+    keys = [k for k in _params.BOUNDS if k in params]
+    keys += [k for k in params if k not in _params.BOUNDS and k != "area_km2"]
+    cols.update({k: _to_np(params[k]) for k in keys})
     cols["area_km2"] = _to_np(params["area_km2"])
     return pd.DataFrame(cols)
 

@@ -16,6 +16,7 @@ training window only.
 
 Usage
 -----
+    python scripts/fetch_camels.py          # once: the full forcing (not in git)
     python calibrate_camels.py --tag base
     python calibrate_camels.py --tag relaxed --relax-bounds
     python calibrate_camels.py --tag sqrt --transform sqrt
@@ -39,8 +40,11 @@ from dcrest.calibrate import CalibrationSchedule, calibrate, kge_loss, nse_loss
 from dcrest.model import CrestConfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FORCING = f"{os.path.dirname(HERE)}/data/forcing_daily.npz"
-BASIN_531 = f"{os.path.dirname(HERE)}/data/531_basin_list.txt"
+REPO = os.path.dirname(HERE)
+#: Where scripts/fetch_camels.py puts the full forcing, and the 531-basin list
+#: shipped with the parameter sets. Both can be overridden on the command line.
+FORCING = os.environ.get("DCREST_FORCING", f"{REPO}/camels/forcing_daily.npz")
+BASIN_531 = f"{REPO}/camels/531_basin_list.txt"
 
 TRAIN = (np.datetime64("1999-10-01"), np.datetime64("2008-09-30"))
 TEST = (np.datetime64("1989-10-01"), np.datetime64("1999-09-30"))
@@ -60,12 +64,17 @@ TENSION = {"ptens": (0.0, 0.9), "plp": (0.05, 1.0)}
 
 
 def load(args):
-    d = np.load(FORCING, allow_pickle=True)
+    if not os.path.exists(args.forcing_file):
+        raise SystemExit(
+            f"forcing file not found: {args.forcing_file}\n"
+            "Run `python scripts/fetch_camels.py` to download the full "
+            "665-catchment forcing, or pass --forcing-file.")
+    d = np.load(args.forcing_file, allow_pickle=True)
     dates = d["dates"].astype("datetime64[D]")
     ids = np.array([str(i) for i in d["ids"]])
     keep = np.ones(len(ids), bool)
     if args.basins == "531":
-        want = {l.strip().zfill(8) for l in open(BASIN_531) if l.strip()}
+        want = {l.strip().zfill(8) for l in open(args.basin_list) if l.strip()}
         keep = np.isin(ids, np.array(sorted(want)))
     cols = np.nonzero(keep)[0]
 
@@ -172,6 +181,11 @@ def main():
     ap.add_argument("--no-compile", dest="compile", action="store_false")
     ap.add_argument("--ensemble", default=None,
                     help="comma-separated tags to score as an ensemble mean")
+    ap.add_argument("--forcing-file", default=FORCING,
+                    help="full forcing npz from scripts/fetch_camels.py "
+                         f"(default {FORCING})")
+    ap.add_argument("--basin-list", default=BASIN_531,
+                    help=f"gauge ids for --basins 531 (default {BASIN_531})")
     args = ap.parse_args()
 
     os.makedirs(f"{HERE}/results", exist_ok=True)

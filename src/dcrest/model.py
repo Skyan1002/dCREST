@@ -4,7 +4,7 @@ Chain, per step, for every modelling unit in parallel::
 
     P, T_air  --degree-day snow-->  liquid input
               --interception (ft*wm, evaporates first)-->  input to soil
-              --CRESTPhys (VIC curve, aquifer)-->  overland | interflow | baseflow
+              --CREST soil column (VIC curve) + aquifer-->  overland | interflow | baseflow
     overland  --linear reservoir (qc)-->  release
     (release + interflow + baseflow) * (1 - lf)
               --Gamma unit hydrograph (nshape, kmult * geomorphic scale)-->  Q
@@ -80,8 +80,26 @@ class CrestConfig:
     compile_step: bool = False
     bounds: Optional[Mapping[str, tuple]] = None
 
+    def __post_init__(self):
+        if not (self.dt_hours > 0 and self.dt_hours < float("inf")):
+            raise ValueError(f"dt_hours must be positive and finite: {self.dt_hours}")
+        if not isinstance(self.uh_nstep, int) or self.uh_nstep < 1:
+            raise ValueError(f"uh_nstep must be an integer of at least 1: {self.uh_nstep!r}")
+        if self.uh_kmin_h is not None and not self.uh_kmin_h > 0:
+            raise ValueError(f"uh_kmin_h must be positive or None: {self.uh_kmin_h}")
+        if self.checkpoint_every is not None and (
+                not isinstance(self.checkpoint_every, int) or self.checkpoint_every < 1):
+            raise ValueError(f"checkpoint_every must be an integer of at least 1, or None: "
+                             f"{self.checkpoint_every!r}")
+        if self.uh_method not in ("auto", "conv", "loop"):
+            raise ValueError(f"uh_method must be 'auto', 'conv' or 'loop': {self.uh_method!r}")
+
     def legacy(self) -> "CrestConfig":
-        """The configuration of the first published calibration of this model."""
+        """The configuration of the first published calibration of this model.
+
+        An instance method: ``CrestConfig().legacy()``, or use
+        :data:`LEGACY_CONFIG`.
+        """
         return replace(self, uh_kmin_h=None, uh_method="loop")
 
 
@@ -103,6 +121,23 @@ def initial_states(params: Mapping[str, Tensor], n_units: int, *,
     return {"swe": z.clone(), "canopy": z.clone(),
             "sm": 0.5 * params["wm"], "gw": 0.3 * params["hmaxaq"],
             "fast": z.clone()}
+
+
+def check_forcing(precip: Tensor, tair: Tensor, pet: Tensor) -> None:
+    """Raise if the forcing has gaps or impossible values.
+
+    Every value must be finite; precipitation and potential ET must be
+    non-negative. The kernels do not guard against these themselves (a
+    negative precipitation would be passed through the snow module as negative
+    liquid water), so fill gaps before simulating.
+    """
+    for name, x in (("precip", precip), ("tair", tair), ("pet", pet)):
+        if not torch.isfinite(x).all():
+            raise ValueError(f"{name} contains non-finite values; fill gaps "
+                             "(e.g. numpy.nan_to_num) before simulating")
+    for name, x in (("precip", precip), ("pet", pet)):
+        if bool((x < 0).any()):
+            raise ValueError(f"{name} must be non-negative: min {float(x.min())}")
 
 
 def _make_step(cfg: CrestConfig, with_et: bool = False):
@@ -159,6 +194,11 @@ def simulate(precip: Tensor, tair: Tensor, pet: Tensor,
         Optional initial states; see :func:`initial_states`.
     return_states
         Also return the final states and the runoff before routing.
+    validate
+        Check the parameters against their bounds, ``area_km2`` for being
+        positive, and the forcing for gaps and negative precipitation or PET
+        (see :func:`check_forcing`). On by default; a calibration loop that
+        has checked its inputs once can pass ``False``.
 
     Returns
     -------
@@ -175,6 +215,7 @@ def simulate(precip: Tensor, tair: Tensor, pet: Tensor,
     if validate:
         _params.validate(params, bounds=bounds if bounds is not None
                          else cfg.bounds)
+        check_forcing(precip, tair, pet)
     T, N = precip.shape
     if params["wm"].shape[0] != N:
         raise ValueError(f"forcing has {N} units but parameters have "
@@ -250,15 +291,20 @@ class CrestLumped(torch.nn.Module):
                  *, bounds=None, init: Optional[Mapping[str, float]] = None,
                  dtype=torch.float32, device="cpu"):
         super().__init__()
-        self.config = CrestConfig() if config is None else config
-        self.bounds = _params.BOUNDS if bounds is None else dict(bounds)
+        cfg = CrestConfig() if config is None else config
+        # one set of ranges for the transform, the validation and saving
+        self.bounds = _params.resolve_bounds(bounds, cfg)
+        self.config = replace(cfg, bounds=self.bounds)
         raw = _params.default_raw(n_units, dtype=dtype, device=device,
                                   bounds=self.bounds, values=init,
                                   requires_grad=False)
         self.raw = torch.nn.ParameterDict(
             {k: torch.nn.Parameter(v) for k, v in raw.items()})
-        self.register_buffer(
-            "area_km2", torch.as_tensor(area_km2, dtype=dtype, device=device))
+        area = torch.as_tensor(area_km2, dtype=dtype, device=device)
+        if tuple(area.shape) != (n_units,):
+            raise ValueError(f"area_km2 must have one value per unit, shape "
+                             f"({n_units},); got {tuple(area.shape)}")
+        self.register_buffer("area_km2", area)
 
     @property
     def physical(self) -> Dict[str, Tensor]:
@@ -276,4 +322,4 @@ class CrestLumped(torch.nn.Module):
 
 
 __all__ = ["CrestConfig", "LEGACY_CONFIG", "STATE_NAMES", "CrestLumped",
-           "initial_states", "simulate"]
+           "check_forcing", "initial_states", "simulate"]

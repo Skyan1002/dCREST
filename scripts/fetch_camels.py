@@ -28,20 +28,39 @@ import hashlib
 import os
 import sys
 
-# Set when the archive is published; until then the script tells you what to do.
+# The download URL is filled in when the archive is published (Zenodo record
+# in the paper's data-availability statement); until then pass --url or set
+# DCREST_FORCING_URL. The checksum is that of the released file (100,208,652
+# bytes) and is verified after every download.
 URL = os.environ.get("DCREST_FORCING_URL", "")
-SHA256 = ""
+SHA256 = "eda60dcef1796f8a23523afb1906fdb19173a8add209826ea07928740dd04891"
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUT = os.path.join(HERE, "camels", "forcing_daily.npz")
 
 
+def _sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=DEFAULT_OUT)
+    ap.add_argument("--url", default=URL, help="download URL (default: built in)")
+    ap.add_argument("--force", action="store_true",
+                    help="download even if --out already exists with the right checksum")
     args = ap.parse_args()
+    url = args.url
 
-    if not URL:
+    if os.path.exists(args.out) and not args.force and _sha256(args.out) == SHA256:
+        print(f"{args.out} already present, checksum OK")
+        return 0
+
+    if not url:
         print(__doc__)
         print("No download URL is configured in this checkout.\n"
               "Set DCREST_FORCING_URL, or obtain the file from the archive "
@@ -52,18 +71,14 @@ def main() -> int:
 
     import urllib.request
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
-    print(f"downloading {URL}\n  -> {args.out}")
-    urllib.request.urlretrieve(URL, args.out)
+    print(f"downloading {url}\n  -> {args.out}")
+    urllib.request.urlretrieve(url, args.out)
 
-    if SHA256:
-        h = hashlib.sha256()
-        with open(args.out, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1 << 20), b""):
-                h.update(chunk)
-        if h.hexdigest() != SHA256:
-            print(f"CHECKSUM MISMATCH\n  expected {SHA256}\n  got      {h.hexdigest()}")
-            return 2
-        print("checksum OK")
+    got = _sha256(args.out)
+    if got != SHA256:
+        print(f"CHECKSUM MISMATCH\n  expected {SHA256}\n  got      {got}")
+        return 2
+    print("checksum OK")
 
     size_mb = os.path.getsize(args.out) / 1e6
     print(f"done, {size_mb:.1f} MB")

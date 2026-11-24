@@ -123,6 +123,61 @@ def test_rejects_bad_parameters(synthetic):
         dcrest.simulate(P, TA, PET, no_area, CFG)
 
 
+def test_rejects_bad_forcing(synthetic):
+    (P, TA, PET), p = _fixture_to(synthetic, "cpu", torch.float32)
+    gap = P.clone(); gap[5, 2] = float("nan")
+    with pytest.raises(ValueError, match="precip contains non-finite"):
+        dcrest.simulate(gap, TA, PET, p, CFG)
+    neg = P.clone(); neg[7, 0] = -5.0
+    with pytest.raises(ValueError, match="precip must be non-negative"):
+        dcrest.simulate(neg, TA, PET, p, CFG)
+    negpet = PET.clone(); negpet[0, 1] = -0.1
+    with pytest.raises(ValueError, match="pet must be non-negative"):
+        dcrest.simulate(P, TA, negpet, p, CFG)
+    hot = TA.clone(); hot[3, 3] = float("inf")
+    with pytest.raises(ValueError, match="tair contains non-finite"):
+        dcrest.simulate(P, hot, PET, p, CFG)
+    # the checks are part of validate=True; a calibration loop may skip them
+    dcrest.simulate(neg, TA, PET, p, CFG, validate=False)
+
+
+def test_rejects_bad_area_and_config(synthetic):
+    (P, TA, PET), p = _fixture_to(synthetic, "cpu", torch.float32)
+    for bad in (0.0, -10.0, float("nan")):
+        area = p["area_km2"].clone(); area[1] = bad
+        with pytest.raises(ValueError, match="area_km2"):
+            dcrest.simulate(P, TA, PET, dict(p, area_km2=area), CFG)
+    with pytest.raises(ValueError, match="area_km2"):      # scalar silently broadcast
+        dcrest.simulate(P, TA, PET, dict(p, area_km2=torch.tensor(100.0)), CFG)
+    with pytest.raises(ValueError, match="area_km2"):      # wrong length
+        dcrest.simulate(P, TA, PET, dict(p, area_km2=p["area_km2"][:3]), CFG)
+    with pytest.raises(ValueError, match="uh_nstep"):
+        CrestConfig(uh_nstep=1.5)
+    with pytest.raises(ValueError, match="checkpoint_every"):
+        CrestConfig(checkpoint_every=2.5)
+    with pytest.raises(ValueError, match="dt_hours"):
+        CrestConfig(dt_hours=-1.0)
+    with pytest.raises(ValueError, match="dt_hours"):
+        CrestConfig(dt_hours=0.0)
+    with pytest.raises(ValueError, match="uh_nstep"):
+        CrestConfig(uh_nstep=0)
+    with pytest.raises(ValueError, match="checkpoint_every"):
+        CrestConfig(checkpoint_every=0)
+    with pytest.raises(ValueError, match="uh_method"):
+        CrestConfig(uh_method="fft")
+
+
+def test_legacy_config_as_documented(synthetic):
+    """README: ``CrestConfig().legacy()`` reproduces the first published setup."""
+    from dcrest.model import LEGACY_CONFIG
+    legacy = CrestConfig().legacy()
+    assert legacy == LEGACY_CONFIG
+    assert legacy.uh_kmin_h is None and legacy.uh_method == "loop"
+    (P, TA, PET), p = _fixture_to(synthetic, "cpu", torch.float32)
+    q = dcrest.simulate(P[:60], TA[:60], PET[:60], p, legacy)
+    assert torch.isfinite(q).all()
+
+
 def test_roundtrip_parameter_io(synthetic, tmp_path):
     (P, TA, PET), p = _fixture_to(synthetic, "cpu", torch.float32)
     ids = [f"basin{i:02d}" for i in range(synthetic["n"])]

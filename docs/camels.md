@@ -53,16 +53,23 @@ Matched forcing, same metric code, medians across catchments.
 
 | model | median test NSE |
 |---|---|
-| LSTM ensemble (Kratzert et al. 2019) | 0.74 |
-| HBV upper benchmark (calibrated ensemble, Seibert et al. 2018) | 0.68 |
-| dCREST ensemble mean (6 seeds) | 0.672 (Maurer), 0.684 (Daymet) |
-| SAC-SMA + Snow-17 (Newman et al. 2015 simulations) | 0.664 |
-| **dCREST best-of-6 (this release)** | **0.659–0.662** |
-| mHM | 0.66 |
-| VIC | 0.55 |
+| LSTM ensemble (regional; Kratzert et al. 2019) | 0.760 |
+| HBV upper benchmark (mean of 100 calibrated runs; Seibert et al. 2018) | 0.679 |
+| dCREST mean of 6 runs | 0.672 (Maurer), 0.684 (Daymet) |
+| SAC-SMA + Snow-17 "A" (Newman et al. 2015; calibrated 1980–1995, so 6 of the 10 test years are in-sample) | 0.664 |
+| mHM (Mizukami et al. 2019) | 0.665 |
+| **dCREST best-of-6 (this release)** | **0.659 (Maurer), 0.668 (Daymet)** |
+| SAC-SMA + Snow-17 "B" (Kratzert et al. 2019 collection; calibrated 1999–2008) | 0.608 |
+| VIC | 0.554 |
 
-Paired against Newman's published SAC-SMA simulations, re-scored with the same
-code on the same 528 catchments and the same forcing (Maurer):
+528 matched catchments of the 531-catchment comparison set; all Maurer-forced
+except dCREST-Daymet. Out of sample for both (1995–1999), dCREST is ahead of
+SAC-SMA "A" by +0.036 (paired median, p = 5e-9); against the protocol-matched "B"
+it is ahead by +0.042 overall (p = 1.5e-21).
+
+Paired against Newman's published SAC-SMA simulations ("A"), re-scored with the
+same code on the same 528 catchments and the same forcing (Maurer); note that six
+of the ten test years lie inside A's calibration period:
 
 | | dCREST v1.0 | SAC-SMA |
 |---|---|---|
@@ -70,34 +77,34 @@ code on the same 528 catchments and the same forcing (Maurer):
 | median KGE | 0.728 | 0.719 |
 | r | 0.825 | 0.827 |
 | α (variability ratio) | 0.844 | 0.823 |
-| β (volume bias) | 0.953 | 0.937 |
-| log-NSE (low flows) | 0.684 | 0.607 |
+| β (volume bias) | 0.953 | 0.936 |
+| log-NSE (low flows; log(Q + 0.01)) | 0.66 | 0.56 |
 | FHV (%) | −27.4 | −28.0 |
 | FLV (%) | +43.6 | +73.0 |
-| catchments with NSE < 0 | 0.9% | 0.2% |
+| catchments with NSE < 0 | 0.9% | 0.4% |
 
-Paired ΔNSE −0.005, dCREST better in 47% of catchments, Wilcoxon p = 0.009:
-slightly but genuinely below SAC-SMA, at mHM level, with better volume bias and
+Paired ΔNSE −0.005, dCREST better in 47% of catchments, Wilcoxon p = 0.009 over
+the full test window; A's lead comes from its in-sample years (1989–1995: −0.034;
+1995–1999: +0.036). dCREST is at mHM level, with better volume bias and
 markedly better low-flow behaviour. SAC-SMA has the more robust tail.
 
-Decomposing NSE, the gap is one of **variability**, not timing or volume:
-dCREST's α (0.844) exceeds its r (0.825), whereas SAC-SMA's α (0.823) sits at
-its r (0.827), and NSE is maximised at α = r. dCREST is slightly over-dispersed.
+Decomposing NSE, dCREST's α (0.844) exceeds its r (0.825), whereas SAC-SMA's α
+(0.823) sits at its r (0.827): dCREST is slightly over-dispersed. Most of the small
+full-window gap to SAC-SMA "A" is, however, A's in-sample skill (see above).
 
 ## The tension-store experiment
 
 CREST has no tension-water store: soil water drains to the aquifer in proportion
 to the whole storage. Importing the Sacramento construct — a calibrated fraction
 of soil storage that can evaporate but not drain — as a seventeenth parameter
-yields a small but extremely robust paired gain: ΔNSE +0.0025, seed-matched over
-six seeds and both forcings, p = 8e-32, with a dose-response in the fitted
-fraction (+0.010 in the tercile of catchments with the largest `ptens`, zero in
-the smallest). An HBV-style ET-efficiency threshold gives nothing (−0.0002,
-p = 0.26).
+yields a small but consistent gain. Pairing each of the four released tension runs
+with the 16-parameter run of the same seed (Daymet), the median change in test NSE
+is +0.0016 to +0.0022 per seed (each p < 1e-4); averaged over the four seeds per
+catchment it is +0.0035 (positive in 61% of catchments, p = 2e-10). The gain grows
+with the fitted fraction (about zero in the third of catchments with the smallest
+`ptens`, +0.008 in the third with the largest) and does not grow with aridity.
 
-So part of the remaining gap to SAC-SMA is structural rather than a calibration
-artefact. The 16-parameter model is kept as the primary product for continuity
-with EF5.
+The 16-parameter model is kept as the primary product for continuity with EF5.
 
 ## Gradient diagnostics
 
@@ -105,8 +112,22 @@ After one backward pass, the fraction of catchments in which each parameter
 receives exactly zero gradient. In an earlier calibration two of sixteen were
 inert — `fc`, whose range (0–150 mm/h) kept its capacity term from ever binding,
 and `kmult`, clamped by a UH floor of half the time step in 99.2% of catchments.
-Re-bounding `fc` to 0–5 mm/h and lowering the clamp to 1 h activated both. **The
-released set has no inert parameters.** See `examples/05_gradient_health.py`.
+Re-bounding `fc` to 0–5 mm/h and lowering the clamp to 1 h activated both: at
+the starting values of the released calibration every parameter receives gradient
+in nearly all catchments. At the released optimum the derivative of the training
+loss is exactly zero for `fc` in 36% of catchments (there the interflow cap never
+binds; removing it leaves the training discharge bitwise unchanged), for the two
+snow parameters in 10% (catchments with almost no snow) and for `kmult` in 5%.
+See `examples/05_gradient_health.py`.
+
+## Spin-up
+
+Scores are computed after a three-year spin-up from half-full soil and an
+aquifer at 30% of `hmaxaq`. For most catchments the choice does not matter, but
+in 32 (mostly dry, with a large and slowly draining calibrated aquifer) a
+nine-year spin-up changes test NSE by more than 0.01: their parameters partly fit
+the drainage of the initial aquifer storage. Run the released sets with the
+same initial states and spin-up to reproduce the stored scores.
 
 ## Reproducing
 

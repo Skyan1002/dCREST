@@ -1,11 +1,18 @@
-"""CRESTPhys soil column and aquifer.
+"""Soil column (CREST) and aquifer (CRESTPhys-style).
 
-A faithful port of ``CRESTPHYSModel::WaterBalanceInt`` from the EF5 development
-fork, reduced to one modelling unit per tensor element. The NumPy sibling of
-this kernel was verified element-wise against the verbatim C++ (max abs
-difference ~1e-9 mm/s on year-long randomised multi-cell input); this PyTorch
-version reproduces it with ``torch.where`` in place of the C++ branches and
-guarded powers, so it is subdifferentiable everywhere.
+The soil column -- VIC infiltration curve, evaporation and the split of excess
+water into interflow and overland flow -- follows EF5's CREST water balance
+(``CRESTModel.cpp``). The aquifer -- drainage from the soil at rate ``ksoil``,
+a fill-and-spill store, exponential baseflow and aquifer-supported evaporation
+-- follows the CRESTPhys variant in a development fork of EF5
+(github.com/mchen15ouedu/EF5, ``CRESTPhysModel.cpp``). One difference matters:
+in CRESTPhys the excess capped by ``fc`` recharges the aquifer; here, as in
+CREST, it becomes interflow. The soil-column logic shared with
+``CRESTModel.cpp`` was verified element-wise against the C++ through a NumPy
+port (max abs difference ~1e-9 mm/s on year-long randomised multi-cell input);
+the aquifer has no counterpart there and is verified against the reference
+implementation (see ``scripts/verify.py``). Branches use ``torch.where`` and
+powers are guarded, so the kernel is subdifferentiable everywhere.
 
 Two structural features distinguish CREST from the HBV/GR family and are worth
 stating because they are what the parameters mean:

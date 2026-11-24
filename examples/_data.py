@@ -6,6 +6,11 @@ every example runs offline. For all 665 catchments see `scripts/fetch_camels.py`
 
 Every array is (T, N) with T = 12784 days and N = 8 basins, in mm/day except
 `tmean` (degC). `obs` is USGS discharge with NaN where a day is missing.
+
+Coverage differs by precipitation product: `P_daymet` spans the whole period,
+`P_maurer` ends 2008-12-31 and `P_imerg` starts 2001-01-01; outside those the
+array is NaN. `dcrest.simulate` rejects NaN forcing, so pick a window inside
+the product's coverage (see `window` / `run_window`).
 """
 from __future__ import annotations
 

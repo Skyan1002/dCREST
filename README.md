@@ -122,20 +122,25 @@ to 1999-09-30**, six Adam seeds, per catchment the seed with the best *training*
 NSE — the same best-of-N-on-calibration rule behind the published SAC-SMA
 benchmark, so the numbers are directly comparable.
 
+Test window 1989–1999, Maurer precipitation, the 528 shared catchments of the
+531-catchment comparison set (Kratzert, 2019, HydroShare collection):
+
 | model | median test NSE |
 |---|---|
-| LSTM ensemble (Kratzert et al. 2019) | 0.74 |
-| HBV upper benchmark (calibrated ensemble, Seibert et al. 2018) | 0.68 |
-| dCREST ensemble mean (6 seeds) | 0.672 (Maurer), 0.684 (Daymet) |
-| SAC-SMA + Snow-17 (Newman et al. 2015) | 0.664 |
-| **dCREST best-of-6 (this release)** | **0.659–0.662** |
-| mHM | 0.66 |
-| VIC | 0.55 |
+| LSTM, regional (Kratzert et al. 2019) | 0.760 |
+| HBV upper benchmark (mean of 100 calibrated runs) | 0.679 |
+| dCREST, mean of the 6 Adam runs | 0.672 |
+| mHM (489 catchments) | 0.665 |
+| SAC-SMA + Snow-17, calibrated 1980–1995 (overlaps the test window) | 0.664 |
+| **dCREST best-of-6 (this release)** | **0.659** (0.662 on all 665 with Daymet) |
+| SAC-SMA + Snow-17, calibrated 1999–2008 (period-matched) | 0.608 |
+| VIC | 0.554 |
 
-Paired against SAC-SMA on the same 528 catchments and the same forcing: median
-ΔNSE −0.005, dCREST better in 47% of catchments, Wilcoxon p = 0.009. Slightly
-but genuinely below SAC-SMA, at mHM level, with better volume bias (β 0.953 vs
-0.937) and better low-flow log-NSE (+0.077). See [`docs/camels.md`](docs/camels.md).
+Against the period-matched SAC-SMA (same calibration and test periods), the paired
+median ΔNSE is +0.042 and dCREST is better in 71% of catchments. The other
+SAC-SMA set was calibrated on 1980–1995 and so has six of the ten test years in
+its calibration; on 1995–1999, outside it, dCREST leads by +0.036. See
+[`docs/camels.md`](docs/camels.md).
 
 **v2A uses a different protocol** and must not be scored on the benchmark test
 window, which its calibration period contains.
@@ -145,14 +150,14 @@ window, which its calibration period contains.
 ```
 P, T_air  ── degree-day snow (tsnow, ddf) ───────────────► liquid input
           ── interception store (ft·wm, evaporates first) ► input to soil
-          ── CRESTPhys ──────────────────────────────────► overland
+          ── CREST soil column + aquifer ────────────────► overland
                 VIC infiltration curve (wm, b, im)         interflow
                 ET, then aquifer-supported residual ET     baseflow
                 soil → aquifer drainage (ksoil)
                 fill-and-spill aquifer (hmaxaq)
                 exponential baseflow (gwc, gwe)
   overland ── linear reservoir (qc) ──► release
-  (release + interflow + baseflow) · (1 − lf)
+  (release + interflow + baseflow + spill) · (1 − lf)
           ── Gamma unit hydrograph (nshape, kmult) ───────► Q
 ```
 
@@ -198,13 +203,23 @@ steps accumulate that. Treat a change of order-of-magnitude as a regression, not
 a change in the last digits.
 
 The three "vs reference implementation" rows need an independent implementation
-that is **not part of this repository**. Without it they print `SKIPPED` and the
-other rows still run; `--require-reference` makes their absence an error.
+that is **not part of this repository**; it is archived with the paper's data
+record (folder `verification/study_root`), together with the EF5 C++ check.
+Point `DCREST_STUDY_ROOT` at that folder. Without it these rows print `SKIPPED`
+and the other rows still run; `--require-reference` makes their absence an error.
 
-**Provenance.** The NumPy sibling of this water-balance kernel was verified
-element-wise against the verbatim EF5 C++ (`CRESTModel.cpp`, `Snow17Model.cpp`)
-on randomised year-long multi-cell input, agreeing to ~1e-9 mm/s — single-precision
-round-off in EF5's own state storage.
+**Provenance.** The soil column (VIC infiltration curve, evaporation, interflow/
+overland split) follows EF5's CREST water balance (`CRESTModel.cpp`); its NumPy
+sibling was verified element-wise against the verbatim C++ on randomised year-long
+multi-cell input, agreeing to ~1e-9 mm/s — single-precision round-off in EF5's own
+state storage. The aquifer (ksoil drainage, fill-and-spill store, exponential
+baseflow, aquifer-supported ET) follows CRESTPhys, a groundwater option in a
+development fork of EF5 (github.com/chrimerss/EF5, commit 780420d), which codes the
+CRESTv3.0 bucket (Chen et al. 2023); unlike CRESTPhys, the excess capped by `fc`
+becomes interflow, as in CREST, rather than aquifer recharge. The aquifer,
+interception store, fast reservoir, degree-day snow and unit hydrograph have no
+counterpart in `CRESTModel.cpp` and are verified against the reference
+implementation.
 
 ## Performance
 
@@ -247,7 +262,8 @@ catchments, two of sixteen parameters were inert:
 | `kmult` | UH scale clamped at `dt/2` = 12 h, truncating the geomorphic scale | 99.2% |
 
 Re-bounding `fc` to (0, 5) mm/h and lowering the UH clamp to 1 h activated both.
-The package defaults to the corrected settings; `CrestConfig.legacy()` and
+The package defaults to the corrected settings; `CrestConfig().legacy()` (or
+`dcrest.model.LEGACY_CONFIG`) and
 `dcrest.params.LEGACY_BOUNDS` reproduce the old behaviour when needed. See
 `examples/05_gradient_health.py`.
 
@@ -262,7 +278,12 @@ The package defaults to the corrected settings; `CrestConfig.legacy()` and
 * **Degree-day snow, not Snow-17.** Adequate where discharge is the only
   constraint; use a fuller snow model if snow observations are the target.
 * **Initial states are spin-up seeds**, not calibrated. Discard a warm-up period
-  rather than tuning them.
+  rather than tuning them. The released scores assume a three-year spin-up from
+  the default states; in 32 dry catchments with large, slowly draining aquifers a
+  longer spin-up changes test NSE by more than 0.01 (see `docs/camels.md`).
+* **The interception store is an effective evaporating store.** Its capacity
+  `ft · wm` is calibrated (median 39 mm in the Daymet set) and supplies most of
+  the evapotranspiration; it is not a leaf-interception capacity.
 * `sanitize=True` (default) replaces non-finite intermediates and clamps states
   at zero each step, so one pathological unit cannot poison a batch's gradient.
   Set it `False` to have such cases fail loudly.
@@ -284,11 +305,30 @@ docs/             model.md, parameters.md, camels.md
 AGENTS.md         orientation for coding agents
 ```
 
+## Release 1.0.0
+
+This is the release that accompanies the paper. The parameter sets were
+calibrated with the calibration driver as first published (commit b1fc089), which
+stored each catchment's best parameter vector one Adam step after the iterate that
+earned the best score. Every stored metric, the best-of-six selection and the
+paper's figures are computed from the stored vectors, so they are consistent
+with the files. This release records the scored iterate instead; rerunning the
+default-start Daymet calibration with it gives median test NSE 0.6618 against
+0.6617, about as large a change as repeating the same GPU calibration. The
+parameter sets were not recalibrated. The release also takes parameter ranges
+from one place (`bounds=` or `config.bounds`), returns NaN instead of a score for
+units without observations, and keeps the square-root loss differentiable at zero
+flow.
+
 ## Citation
 
-Parameter sets and the inversion study they were built for: *[manuscript in
-preparation, Journal of Hydrology]*. Model lineage: Wang et al. (2011), CREST;
-EF5 (HyDROS Lab / NOAA National Weather Service).
+Model, benchmark and parameter sets: *dCREST-CAMELS: Numerical verification and
+benchmarking of a differentiable lumped CREST model across the contiguous United
+States* (manuscript in preparation for Environmental Modelling & Software). Code
+and data archive: Zenodo, DOI to be added.
+Model lineage: Wang et al. (2011), CREST; Chen et al. (2023), the CRESTv3.0
+groundwater bucket; EF5 (Flamig et al., 2020; HyDROS Lab / NOAA National
+Weather Service).
 
 ## Licence
 

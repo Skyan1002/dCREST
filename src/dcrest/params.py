@@ -36,8 +36,8 @@ BOUNDS: Dict[str, Tuple[float, float]] = {
     "tsnow":  (-2.0, 3.0),      # rain/snow air-temperature threshold [degC]
     "ddf":    (1.0, 8.0),       # degree-day melt factor [mm/degC/day]
     # --- interception ----------------------------------------------------
-    "ft":     (0.0, 0.7),       # canopy capacity as a fraction of wm [-]
-    # --- CRESTPhys soil column ------------------------------------------
+    "ft":     (0.0, 0.7),       # interception-store capacity as a fraction of wm [-]
+    # --- CREST soil column ---------------------------------------------
     "wm":     (1.0, 2000.0),    # mean soil water capacity [mm]
     "b":      (0.01, 6.0),      # VIC infiltration-curve exponent [-]
     "im":     (0.0, 0.5),       # impervious area fraction [-]
@@ -56,11 +56,12 @@ BOUNDS: Dict[str, Tuple[float, float]] = {
 }
 
 #: Optional Sacramento-style tension-water extension. ``ptens`` protects a
-#: fraction of soil storage from drainage (it can still evaporate); ``plp``
-#: holds evapotranspiration at the full atmospheric demand until storage falls
-#: below that fraction, as HBV's ``lp`` does. The defaults below are the
-#: identity: ``ptens = 0`` and ``plp = 1`` reproduce the 16-parameter model
-#: exactly, so a calibration on these bounds strictly contains the base model.
+#: fraction of the soil capacity ``wm`` from drainage (that water can still
+#: evaporate); ``plp`` holds evapotranspiration at the full atmospheric demand
+#: until storage falls below that fraction, as HBV's ``lp`` does. ``ptens = 0``
+#: and ``plp = 1`` reproduce the 16-parameter model exactly, so a calibration on
+#: these bounds strictly contains the base model; calibration starts from
+#: :data:`DEFAULTS` (``ptens`` 0.2, ``plp`` 0.6), not from that identity.
 BOUNDS_TENSION: Dict[str, Tuple[float, float]] = dict(
     BOUNDS, ptens=(0.0, 0.9), plp=(0.05, 1.0))
 
@@ -89,6 +90,33 @@ UNITS: Dict[str, str] = {
 
 def _bounds(bounds: Mapping[str, Tuple[float, float]] | None):
     return BOUNDS if bounds is None else bounds
+
+
+def resolve_bounds(bounds: Mapping[str, Tuple[float, float]] | None = None,
+                   config=None) -> Dict[str, Tuple[float, float]]:
+    """The parameter ranges a call should use.
+
+    An explicit ``bounds`` wins, then ``config.bounds`` (a
+    :class:`~dcrest.model.CrestConfig`, e.g. from
+    :func:`~dcrest.io.config_from_meta`), then the package defaults
+    :data:`BOUNDS`. Passing both with different contents is ambiguous and raises,
+    so a set can never be transformed under one range and validated or saved
+    under another.
+    """
+    cb = None if config is None else getattr(config, "bounds", None)
+    if bounds is not None and cb is not None:
+        bb, cc = dict(bounds), dict(cb)
+        same = set(bb) == set(cc) and all(
+            tuple(map(float, bb[k])) == tuple(map(float, cc[k])) for k in bb)
+        if not same:
+            raise ValueError("`bounds` and `config.bounds` differ; pass only one "
+                             "of them")
+        return bb
+    if bounds is not None:
+        return dict(bounds)
+    if cb is not None:
+        return dict(cb)
+    return dict(BOUNDS)
 
 
 def to_raw(physical: Mapping[str, Tensor], bounds=None) -> Dict[str, Tensor]:
@@ -148,8 +176,17 @@ def validate(params: Mapping[str, Tensor], *, bounds=None,
     shapes = {tuple(torch.as_tensor(params[k]).shape) for k in b}
     if len(shapes) != 1:
         raise ValueError(f"parameters have inconsistent shapes: {shapes}")
-    if require_area and "area_km2" not in params:
-        raise KeyError("missing 'area_km2' (needed for the geomorphic UH scale)")
+    if require_area:
+        if "area_km2" not in params:
+            raise KeyError("missing 'area_km2' (needed for the geomorphic UH scale)")
+        a = torch.as_tensor(params["area_km2"]).detach()
+        n_units = next(iter(shapes))
+        if tuple(a.shape) != n_units:
+            raise ValueError(f"'area_km2' must have one value per unit, shape "
+                             f"{n_units}; got {tuple(a.shape)}")
+        if not torch.isfinite(a).all() or bool((a <= 0).any()):
+            raise ValueError("'area_km2' must be finite and positive: got "
+                             f"[{float(a.min())}, {float(a.max())}]")
     for k in b:
         v = torch.as_tensor(params[k]).detach()
         if not torch.isfinite(v).all():

@@ -7,6 +7,7 @@ authors:
 license: MIT
 repository-code: "https://github.com/Skyan1002/dCREST"
 version: "1.0.0"
+date-released: "2026-11-23"
 keywords:
   - hydrology
   - rainfall-runoff
@@ -23,8 +24,24 @@ abstract: >-
   gradient descent across thousands of catchments simultaneously and the model
   can be inverted for its input. Ships with dCREST-CAMELS, calibrated parameter
   sets for 665 CAMELS-US catchments produced under the community benchmark
-  protocol.
+  protocol, described in "dCREST-CAMELS: Numerical verification and benchmarking
+  of a differentiable lumped CREST model across the contiguous United States".
 references:
+  - type: article
+    authors:
+      - family-names: Flamig
+        given-names: Zachary L.
+      - family-names: Vergara
+        given-names: Humberto
+      - family-names: Gourley
+        given-names: Jonathan J.
+    title: "The Ensemble Framework For Flash Flood Forecasting (EF5) v1.2: description and case study"
+    journal: "Geoscientific Model Development"
+    volume: 13
+    start: 4943
+    end: 4958
+    year: 2020
+    doi: "10.5194/gmd-13-4943-2020"
   - type: article
     authors:
       - family-names: Wang

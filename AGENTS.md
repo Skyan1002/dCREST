@@ -61,6 +61,12 @@ have what you need.
 whole batch runs in parallel — calibrating 600 catchments costs little more than
 calibrating one. Units are mm per step throughout, degC for temperature. A
 `(T,)` array broadcast against `(T, N)` is rejected, not silently expanded.
+So are NaN/inf anywhere in the forcing, negative precipitation or PET,
+non-positive `area_km2`, and a non-positive `dt_hours` (`simulate(...,
+validate=True)`, the default). Fill gaps with `numpy.nan_to_num` first. The
+checks are a few reductions per call and do not measurably slow an optimisation
+loop (measured: identical seconds per iteration with and without them);
+`validate=False` skips them once the inputs have been checked.
 
 **2. Load a released parameter set with its own config. Never a bare `CrestConfig()`.**
 
@@ -170,9 +176,10 @@ python scripts/verify.py     # numerical identity: finite differences, water
 
 `verify.py` goes further but **three of its rows need an external reference
 implementation** that is not in this repository. Without it those rows print
-`SKIPPED`; the remaining checks still run. Point `DCREST_STUDY_ROOT` at a
-checkout that has `crest_blackbox.py` to enable them, or use
-`--require-reference` to make their absence an error.
+`SKIPPED`; the remaining checks still run. The paper's data archive ships it in
+`verification/study_root`, found automatically when the archive layout is kept;
+otherwise point `DCREST_STUDY_ROOT` at a folder that has `crest_blackbox.py`, or
+use `--require-reference` to make its absence an error.
 
 Tolerances, not zeros. The internal checks that should be exactly zero are the
 checkpointing and router equivalences; the reference comparisons agree to

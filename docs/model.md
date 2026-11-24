@@ -35,7 +35,7 @@ The division by `ke` is deliberate: the soil kernel re-applies `ke` internally,
 so passing the *unmultiplied* residual demand keeps the total atmospheric demand
 consistent across the two stores.
 
-## 3. CRESTPhys soil column
+## 3. Soil column (CREST) and aquifer (CRESTPhys-style)
 
 With `adjPET = ke · PET_soil`, the step takes one of two branches.
 
@@ -104,9 +104,10 @@ Overland flow passes through a linear reservoir; interflow and baseflow do not.
     release   = min(qc · k_d, 1) · S;      S ← S − release
     runoff    = (release + interflow + slow) · (1 − lf)
 
-`lf` is a deep-loss / abstraction fraction applied to the total: it scales the
-routed output and nothing else, so it is exactly the term to hold at zero when
-checking water balance.
+`lf` is a deep-loss / abstraction fraction applied to the total runoff before
+routing (because the unit hydrograph is linear and conserves mass, this equals
+scaling the routed output); it is exactly the term to hold at zero when checking
+water balance.
 
 Routing is a per-unit Gamma unit hydrograph evaluated at step midpoints and
 normalised, so truncation at `L` steps conserves mass by construction:

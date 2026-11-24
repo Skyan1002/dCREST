@@ -12,7 +12,10 @@ import numpy as np
 import pytest
 import torch
 
-STUDY_ROOT = os.environ.get("DCREST_STUDY_ROOT", "/media/scratch/skyan/RL_Precipitation")
+# default: the reference implementation as laid out in the paper's data archive
+_ARCHIVED = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          "..", "..", "verification", "study_root"))
+STUDY_ROOT = os.environ.get("DCREST_STUDY_ROOT", _ARCHIVED)
 FORCING = os.path.join(STUDY_ROOT, "data", "forcing_daily.npz")
 PARAMS = os.path.join(STUDY_ROOT, "data", "params_v2A.npz")
 

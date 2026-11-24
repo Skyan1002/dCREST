@@ -19,7 +19,7 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence
 import torch
 
 from . import params as _params
-from .model import CrestConfig, simulate
+from .model import CrestConfig, check_forcing, simulate
 
 Tensor = torch.Tensor
 
@@ -34,10 +34,23 @@ class CalibrationSchedule:
     is a basin-wise iterated local search that happens to use gradients.
     """
 
-    iterations: int = 2048
+    iterations: int = 2048       #: total over all phases, split as evenly as possible
     phases: int = 4
     lr: Sequence[float] = (0.05, 0.030, 0.020, 0.012)
     jitter: Sequence[float] = (0.0, 0.60, 0.40, 0.25)
+
+    def phase_lengths(self) -> List[int]:
+        """Iterations per phase; they sum to ``iterations`` exactly.
+
+        The first ``iterations % phases`` phases get one extra iteration.
+        """
+        if self.phases < 1:
+            raise ValueError(f"phases must be at least 1: {self.phases}")
+        if self.iterations < self.phases:
+            raise ValueError("every phase needs at least one iteration: "
+                             f"iterations={self.iterations}, phases={self.phases}")
+        q, r = divmod(self.iterations, self.phases)
+        return [q + (1 if i < r else 0) for i in range(self.phases)]
 
     def phase_lr(self, i: int) -> float:
         return float(self.lr[i]) if i < len(self.lr) else float(self.lr[-1])
@@ -90,9 +103,17 @@ def calibrate(precip: Tensor, tair: Tensor, pet: Tensor, obs: Tensor,
     """
     cfg = CrestConfig() if config is None else config
     sched = CalibrationSchedule() if schedule is None else schedule
-    b = _params.BOUNDS if bounds is None else dict(bounds)
+    lengths = sched.phase_lengths()
+    b = _params.resolve_bounds(bounds, cfg)
     device, dtype = precip.device, precip.dtype
     n = precip.shape[1]
+    check_forcing(precip, tair, pet)
+    _area = torch.as_tensor(area_km2).detach()
+    if tuple(_area.shape) != (n,):
+        raise ValueError(f"area_km2 must have one value per unit, shape ({n},); "
+                         f"got {tuple(_area.shape)}")
+    if not torch.isfinite(_area).all() or bool((_area <= 0).any()):
+        raise ValueError("area_km2 must be finite and positive")
     torch.manual_seed(seed)
     gen = torch.Generator(device=device).manual_seed(seed)
 
@@ -109,7 +130,6 @@ def calibrate(precip: Tensor, tair: Tensor, pet: Tensor, obs: Tensor,
     best_raw = {k: v.detach().clone() for k, v in raw.items()}
     activity = {k: 1.0 for k in raw}
     result = CalibrationResult(params={}, raw=best_raw, score=best)
-    per_phase = max(1, sched.iterations // sched.phases)
     t0 = time.time()
 
     def physical(source):
@@ -124,6 +144,8 @@ def calibrate(precip: Tensor, tair: Tensor, pet: Tensor, obs: Tensor,
                 for k in raw:
                     raw[k].copy_(best_raw[k] + jit * torch.randn(
                         (n,), generator=gen, device=device, dtype=dtype))
+        per_phase = lengths[phase]
+        done_before = sum(lengths[:phase])
         opt = torch.optim.Adam(list(raw.values()), lr=sched.phase_lr(phase))
         sch = torch.optim.lr_scheduler.CosineAnnealingLR(
             opt, T_max=per_phase, eta_min=sched.phase_lr(phase) * 0.1)
@@ -142,8 +164,7 @@ def calibrate(precip: Tensor, tair: Tensor, pet: Tensor, obs: Tensor,
                         f"parameters receive no gradient in every unit and will "
                         f"not be calibrated: {dead}. Check their bounds.",
                         RuntimeWarning, stacklevel=2)
-            opt.step()
-            sch.step()
+            # record the iterate that was just scored, before the step moves it
             with torch.no_grad():
                 s = (-per_unit.detach() if score_fn is None
                      else score_fn(sim.detach(), obs))
@@ -151,8 +172,10 @@ def calibrate(precip: Tensor, tair: Tensor, pet: Tensor, obs: Tensor,
                 for k in raw:
                     best_raw[k][better] = raw[k].detach()[better]
                 best[better] = s[better]
+            opt.step()
+            sch.step()
             if log_every and (it % log_every == 0 or it == per_phase - 1):
-                print(f"  phase {phase} iter {phase * per_phase + it:5d} "
+                print(f"  phase {phase} iter {done_before + it:5d} "
                       f"loss {loss.item():+.4f} best {best[best > -torch.inf].median():+.4f} "
                       f"({time.time() - t0:.0f}s)", flush=True)
         result.history.append({"phase": phase,
@@ -216,7 +239,10 @@ def _apply_transform(sim, obs, transform):
     if transform is None:
         return sim, obs
     if transform == "sqrt":
-        return torch.sqrt(torch.clamp(sim, min=0.0)), torch.sqrt(torch.clamp(obs, min=0.0))
+        # the offset keeps the derivative finite where the flow is zero
+        eps = 1e-6
+        return (torch.sqrt(torch.clamp(sim, min=0.0) + eps),
+                torch.sqrt(torch.clamp(obs, min=0.0) + eps))
     if transform == "log":
         eps = 0.01
         return torch.log(torch.clamp(sim, min=0.0) + eps), torch.log(torch.clamp(obs, min=0.0) + eps)

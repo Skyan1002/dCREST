@@ -18,13 +18,13 @@ prints this table from the code, so it cannot drift from the implementation.
 | `b` | &mdash; | 0.01 … 6 | 1 | shape of the capacity distribution (VIC curve) |
 | `im` | &mdash; | 0 … 0.5 | 0.05 | impervious fraction |
 | `ke` | &mdash; | 0.2 … 2.5 | 1 | multiplier on potential ET |
-| `fc` | mm/h | 0 … 5 | 0.5 | saturated hydraulic conductivity; caps interflow |
+| `fc` | mm/h | 0 … 5 | 0.5 | interflow rate (EF5: saturated hydraulic conductivity); caps interflow |
 | `ksoil` | 1/day | 0 … 0.5 | 0.05 | soil to aquifer drainage rate |
 | `hmaxaq` | mm | 50 … 4000 | 500 | aquifer capacity (fill and spill) |
 | `gwc` | mm/day | 0.01 … 5 | 0.5 | baseflow coefficient |
 | `gwe` | &mdash; | 0.5 … 6 | 3 | baseflow exponent |
 | `qc` | 1/day | 0.05 … 1 | 0.3 | overland linear-reservoir release rate |
-| `lf` | &mdash; | 0 … 0.5 | 0.05 | fraction of routed flow lost at the outlet |
+| `lf` | &mdash; | 0 … 0.5 | 0.05 | fraction of runoff removed before routing (deep loss, abstraction) |
 | `nshape` | &mdash; | 1 … 8 | 2 | Gamma unit-hydrograph shape |
 | `kmult` | &mdash; | 0.1 … 4 | 0.6 | multiplier on the geomorphic UH scale |
 
@@ -32,7 +32,7 @@ prints this table from the code, so it cannot drift from the implementation.
 
 | name | units | range | default | what it does |
 |---|---|---|---|---|
-| `ptens` | &mdash; | 0 … 0.9 | 0.2 | fraction of soil storage that evaporates but cannot drain |
+| `ptens` | &mdash; | 0 … 0.9 | 0.2 | fraction of the soil capacity `wm` below which soil water cannot drain |
 | `plp` | &mdash; | 0.05 … 1 | 0.6 | soil-moisture threshold below which ET is limited |
 <!-- AUTOGEN:parameters END -->
 
@@ -68,8 +68,9 @@ interpretable; without it the scale would have to be learned from nothing.
 `kmult` is also the parameter that the legacy `dt/2` clamp silently killed — see
 `examples/05_gradient_health.py`.
 
-**`lf` is a sink, not a physical process.** It removes a fraction of routed flow
-at the outlet and exists to absorb systematic volume error — a gauged area that
+**`lf` is a sink, not a physical process.** It removes a fraction of the runoff
+before routing (equivalently of the routed flow, as the unit hydrograph is linear)
+and exists to absorb systematic volume error — a gauged area that
 disagrees with the topographic polygon, an unmeasured diversion. Large fitted
 `lf` is a signal to check the catchment's area, not a result.
 
@@ -83,10 +84,14 @@ product has nowhere else to go. This matters when interpreting a calibrated set:
 
 `ptens` is the Sacramento tension-water construct: CREST drains soil water to
 the aquifer in proportion to the whole storage, whereas SAC-SMA holds a tension
-fraction that only evaporation can remove. Adding it is worth a small but very
-robust gain on the CAMELS benchmark (paired ΔNSE +0.0025, seed-matched over six
-seeds and both forcings, p ≈ 8e-32, with a dose-response in the fitted `ptens`).
-`plp`, the HBV-style ET-efficiency threshold, gives nothing (−0.0002, p = 0.26).
+part that only evaporation can remove. Here `ptens` is the fraction of the soil
+capacity `wm` below which soil water cannot drain. Adding it gives a small but
+consistent gain on the CAMELS benchmark (four seeds, Daymet: median per-seed
+ΔNSE +0.0016 to +0.0022; averaged over the seeds +0.0035, positive in 61% of
+catchments, p = 2e-10; larger where the fitted `ptens` is large). The gain is
+small partly because the interception store already holds water that evaporates
+but cannot drain. `plp`, the HBV-style ET-efficiency threshold, gave nothing in
+an earlier test (−0.0002, p = 0.26).
 
 The 16-parameter model remains the primary product, for continuity with EF5. The
 extension quantifies what that piece of Sacramento structure is worth in CREST.

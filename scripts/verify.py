@@ -8,7 +8,9 @@
 Three rows compare against an independent reference implementation that is NOT
 part of this repository (`crest_blackbox.py` and the CAMELS arrays from the
 study the model was built for). Without it those rows print SKIPPED and the rest
-still run; point DCREST_STUDY_ROOT at a checkout that has them to enable them.
+still run. The paper's data archive ships them in verification/study_root, which
+is found automatically when the archive layout is kept; otherwise point
+DCREST_STUDY_ROOT at a folder that has them.
 
 The reference comparisons are tolerances, not guarantees of bit-exactness: they
 were exactly zero under an earlier PyTorch and are round-off (~1e-14 in float64,
@@ -27,7 +29,11 @@ import torch
 import dcrest
 from dcrest.model import CrestConfig
 
-ROOT = os.environ.get("DCREST_STUDY_ROOT", "/media/scratch/skyan/RL_Precipitation")
+# default: the reference implementation as laid out in the paper's data archive,
+# <archive>/verification/study_root next to <archive>/dcrest-1.0.0
+_ARCHIVED = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          "..", "..", "verification", "study_root"))
+ROOT = os.environ.get("DCREST_STUDY_ROOT", _ARCHIVED)
 rows = []
 
 

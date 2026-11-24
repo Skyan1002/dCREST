@@ -32,6 +32,11 @@ def _build_mask(sim: Tensor, obs: Tensor, mask: Optional[Tensor]) -> Tensor:
     return m
 
 
+def _nan_where_empty(value: Tensor, m: Tensor) -> Tensor:
+    """NaN for units with no usable observation, instead of a spurious score."""
+    return torch.where(m.any(0), value, torch.full_like(value, float("nan")))
+
+
 def nse(sim: Tensor, obs: Tensor, mask: Optional[Tensor] = None,
         eps: float = 1e-8, var_floor: float = 0.0) -> Tensor:
     """Nash-Sutcliffe efficiency per unit.
@@ -39,7 +44,8 @@ def nse(sim: Tensor, obs: Tensor, mask: Optional[Tensor] = None,
     ``var_floor`` bounds the observed variance in the denominator from below.
     It has no effect on the reported metric when left at zero; set it during
     calibration (e.g. 0.1 mm^2/day^2) so that a handful of very flat-hydrograph
-    units cannot dominate a basin-averaged loss.
+    units cannot dominate a basin-averaged loss. A unit without any usable
+    observation gets NaN.
     """
     m = _build_mask(sim, obs, mask)
     n, _, _, _, oc, _, _ = _masked_moments(sim, obs, m, eps)
@@ -47,7 +53,8 @@ def nse(sim: Tensor, obs: Tensor, mask: Optional[Tensor] = None,
     if var_floor > 0.0:
         denom = torch.clamp(denom, min=var_floor)
     resid = torch.where(m, sim - obs, torch.zeros_like(sim))
-    return 1.0 - ((resid ** 2).sum(0) / n) / (denom + eps)
+    value = 1.0 - ((resid ** 2).sum(0) / n) / (denom + eps)
+    return _nan_where_empty(value, m)
 
 
 def kge(sim: Tensor, obs: Tensor, mask: Optional[Tensor] = None,
@@ -62,6 +69,7 @@ def kge(sim: Tensor, obs: Tensor, mask: Optional[Tensor] = None,
     alpha = ss / (os_ + eps)
     beta = sim_m / (obs_m + eps)
     value = 1.0 - torch.sqrt((r - 1) ** 2 + (alpha - 1) ** 2 + (beta - 1) ** 2 + eps)
+    value, r, alpha, beta = (_nan_where_empty(x, m) for x in (value, r, alpha, beta))
     return (value, (r, alpha, beta)) if components else value
 
 

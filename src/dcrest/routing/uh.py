@@ -16,6 +16,10 @@ def geomorphic_lag_hours(area_km2, *, dtype=torch.float32, device="cpu",
     area-to-time-of-concentration scaling. It exists so that ``kmult`` is a
     dimensionless multiplier on a physically sensible prior instead of a free
     time constant, which keeps the parameter comparable across catchment sizes.
+
+    Areas below 1 km2 are treated as 1 km2 (a floor on the prior lag, not on
+    the catchment); :func:`dcrest.simulate` rejects non-positive areas before
+    this is reached.
     """
     if isinstance(area_km2, torch.Tensor):
         a = area_km2.to(dtype=dtype, device=device)
@@ -73,7 +77,7 @@ def convolve_uh(q: Tensor, weights: Tensor, method: str = "auto") -> Tensor:
     if method == "loop":
         T = q.shape[0]
         out = torch.zeros_like(q)
-        for lag in range(weights.shape[0]):
+        for lag in range(min(weights.shape[0], T)):
             out = out + F.pad(q[: T - lag] * weights[lag][None, :],
                               (0, 0, lag, 0))
         return out

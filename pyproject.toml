@@ -33,6 +33,11 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = ["error::UserWarning"]
+filterwarnings = [
+    "error::UserWarning",
+    # a CUDA build of torch on a host without an NVIDIA driver warns once when
+    # torch.compile inspects the devices; not a dcrest problem
+    "ignore:Can't initialize NVML:UserWarning",
+]
 log_cli_level = "WARNING"
 addopts = "-p no:cacheprovider"

@@ -35,21 +35,22 @@ sat, dates = load("P_imerg", device=DEV)
 ref, _ = load("P_daymet", device=DEV)          # reference, for scoring only
 
 params, meta = dcrest.load_parameters(PARAMS, subset=sat["ids"], device=DEV)
+for v in params.values():                       # frozen: no parameter gradients
+    v.requires_grad_(False)
+
+w = run_window(dates, *WINDOW, SPINUP)          # IMERG is NaN before 2001, so the
+P0, TA, E = sat["P"][w], sat["T"][w], sat["E"][w]   # window must start after that
+obs = sat["obs"][w]
+mask = scoring_mask(dates, sat["obs"], *WINDOW)[w]
+
 # compile_step fuses the per-step kernels: ~5x here. Falls back if unavailable.
 try:
     cfg = dcrest.config_from_meta(meta, compile_step=True)
-    dcrest.simulate(sat["P"][:400], sat["T"][:400], sat["E"][:400], params, cfg)
+    dcrest.simulate(P0[:400], TA[:400], E[:400], params, cfg)
     print("compiled step: on")
 except Exception as exc:                        # noqa: BLE001
     cfg = dcrest.config_from_meta(meta)
     print(f"compiled step unavailable ({type(exc).__name__}); running eager")
-for v in params.values():                       # frozen: no parameter gradients
-    v.requires_grad_(False)
-
-w = run_window(dates, *WINDOW, SPINUP)
-P0, TA, E = sat["P"][w], sat["T"][w], sat["E"][w]
-obs = sat["obs"][w]
-mask = scoring_mask(dates, sat["obs"], *WINDOW)[w]
 
 def skill(P):
     with torch.no_grad():
