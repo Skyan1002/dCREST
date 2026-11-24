@@ -7,6 +7,10 @@ authors:
 license: MIT
 repository-code: "https://github.com/Skyan1002/dCREST"
 version: "1.0.0"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24492417"
+    description: "Zenodo archive of release 1.0.0 with the parameter sets, calibration records and analysis scripts"
 date-released: "2026-11-23"
 keywords:
   - hydrology

@@ -324,8 +324,9 @@ flow.
 
 Model, benchmark and parameter sets: *dCREST-CAMELS: Numerical verification and
 benchmarking of a differentiable lumped CREST model across the contiguous United
-States* (manuscript in preparation for Environmental Modelling & Software). Code
-and data archive: Zenodo, DOI to be added.
+States* (manuscript in preparation for Environmental Modelling & Software). Code,
+parameter sets and analysis archive of this release: Yan, S., Li, Z., Hong, Y.
+(2026), Zenodo, https://doi.org/10.5281/zenodo.24492417.
 Model lineage: Wang et al. (2011), CREST; Chen et al. (2023), the CRESTv3.0
 groundwater bucket; EF5 (Flamig et al., 2020; HyDROS Lab / NOAA National
 Weather Service).
